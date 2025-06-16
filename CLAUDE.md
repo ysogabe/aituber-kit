@@ -88,3 +88,12 @@ Required API keys vary by features used (OpenAI, Google, Azure, etc.). Check `.e
 - Free for non-commercial use
 - Commercial license required for business use
 - Character model usage requires separate licensing
+
+## CRITICAL: GitHub Issue/PR Guidelines
+
+**絶対にフォーク元（tegnike/aituber-kit）にIssueやPRを作成しないこと**
+- Issue/PR は必ず自分のフォークリポジトリ（ysogabe/aituber-kit）に作成する
+- Issue/PR 作成前に必ず以下を確認：
+  1. `gh repo view` でリポジトリ名を確認
+  2. リポジトリが `ysogabe/aituber-kit` であることを確認
+  3. この CLAUDE.md の本セクションを読んだことを報告する
