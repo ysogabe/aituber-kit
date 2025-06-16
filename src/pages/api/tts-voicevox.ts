@@ -14,23 +14,50 @@ export default async function handler(
   const apiUrl =
     serverUrl || process.env.VOICEVOX_SERVER_URL || 'http://localhost:50021'
 
+  console.log('VOICEVOX API Request:', { 
+    text: text?.substring(0, 100) + (text?.length > 100 ? '...' : ''), 
+    speaker, 
+    speed, 
+    pitch, 
+    intonation, 
+    serverUrl: apiUrl,
+    textLength: text?.length 
+  })
+
   try {
-    // テキストの長さ制限（VOICEVOXの推奨値）
-    if (text.length > 200) {
-      return res.status(400).json({ error: 'テキストが長すぎます（200文字以内）' })
+    // パラメータ検証
+    if (!text || typeof text !== 'string') {
+      console.error('VOICEVOX: Missing or invalid text parameter')
+      return res.status(400).json({ error: 'テキストが指定されていません' })
+    }
+    
+    if (!speaker || isNaN(Number(speaker))) {
+      console.error('VOICEVOX: Missing or invalid speaker parameter:', speaker)
+      return res.status(400).json({ error: '有効なスピーカーIDが指定されていません' })
     }
 
-    // 1. Audio Query の生成 - POSTボディでテキストを送信
+    // テキストの長さ制限（VOICEVOXの推奨値）
+    let processText = text
+    if (text.length > 200) {
+      console.warn(`VOICEVOX: Text too long (${text.length} chars), truncating to 200`)
+      processText = text.substring(0, 200)
+    }
+
+    console.log('VOICEVOX: Making audio_query request...')
+
+    // 1. Audio Query の生成 - クエリパラメータでテキストを送信
     const queryResponse = await axios.post(
-      `${apiUrl}/audio_query?speaker=${speaker}`,
-      text,
+      `${apiUrl}/audio_query?speaker=${speaker}&text=${encodeURIComponent(processText)}`,
+      null,
       {
         headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Type': 'application/json',
         },
         timeout: 30000,
       }
     )
+    
+    console.log('VOICEVOX: Audio query successful, response status:', queryResponse.status)
 
     const queryData = queryResponse.data
     queryData.speedScale = speed
@@ -38,6 +65,7 @@ export default async function handler(
     queryData.intonationScale = intonation
 
     // 2. 音声合成
+    console.log('VOICEVOX: Making synthesis request...')
     const synthesisResponse = await axios.post(
       `${apiUrl}/synthesis?speaker=${speaker}`,
       queryData,
@@ -51,6 +79,7 @@ export default async function handler(
       }
     )
 
+    console.log('VOICEVOX: Synthesis successful, response status:', synthesisResponse.status)
     res.setHeader('Content-Type', 'audio/wav')
     synthesisResponse.data.pipe(res)
   } catch (error) {
