@@ -9,6 +9,10 @@ import settingsStore from '@/features/stores/settings'
 import '@/styles/globals.css'
 import migrateStore from '@/utils/migrateStore'
 import i18n from '../lib/i18n'
+import {
+  initializeMqttIntegration,
+  cleanupMqttIntegration,
+} from '@/features/mqtt'
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
@@ -17,24 +21,42 @@ export default function App({ Component, pageProps }: AppProps) {
 
     if (hs.userOnboarded) {
       i18n.changeLanguage(ss.selectLanguage)
-      return
+    } else {
+      migrateStore()
+
+      const browserLanguage = navigator.language
+      const languageCode = browserLanguage.match(/^zh/i)
+        ? 'zh'
+        : browserLanguage.split('-')[0].toLowerCase()
+
+      let language = ss.selectLanguage
+      if (!language) {
+        language = isLanguageSupported(languageCode) ? languageCode : 'ja'
+      }
+      i18n.changeLanguage(language)
+      settingsStore.setState({ selectLanguage: language })
+
+      homeStore.setState({ userOnboarded: true })
     }
 
-    migrateStore()
-
-    const browserLanguage = navigator.language
-    const languageCode = browserLanguage.match(/^zh/i)
-      ? 'zh'
-      : browserLanguage.split('-')[0].toLowerCase()
-
-    let language = ss.selectLanguage
-    if (!language) {
-      language = isLanguageSupported(languageCode) ? languageCode : 'ja'
+    // Initialize MQTT integration
+    const initializeMqtt = async () => {
+      try {
+        await initializeMqttIntegration()
+        console.log('MQTT integration initialized successfully')
+      } catch (error) {
+        console.warn('Failed to initialize MQTT integration:', error)
+      }
     }
-    i18n.changeLanguage(language)
-    settingsStore.setState({ selectLanguage: language })
 
-    homeStore.setState({ userOnboarded: true })
+    initializeMqtt()
+
+    // Cleanup on unmount
+    return () => {
+      cleanupMqttIntegration().catch((error) => {
+        console.warn('Failed to cleanup MQTT integration:', error)
+      })
+    }
   }, [])
 
   return (

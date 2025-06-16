@@ -116,6 +116,17 @@ interface Integrations {
   youtubeNoCommentCount: number
   youtubeSleepMode: boolean
   conversationContinuityMode: boolean
+  // MQTT統合設定
+  mqttEnabled: boolean
+  mqttHost: string
+  mqttPort: number
+  mqttClientId: string
+  mqttProtocol: 'mqtt' | 'websocket'
+  mqttWebsocketPath: string
+  mqttUsername?: string
+  mqttPassword?: string
+  mqttSecure: boolean
+  mqttConnectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error'
 }
 
 interface Character {
@@ -310,6 +321,21 @@ const settingsStore = create<SettingsState>()(
       youtubeNoCommentCount: 0,
       youtubeSleepMode: false,
       conversationContinuityMode: false,
+
+      // MQTT統合設定
+      mqttEnabled: process.env.NEXT_PUBLIC_MQTT_ENABLED === 'true',
+      mqttHost: process.env.NEXT_PUBLIC_MQTT_HOST || 'localhost',
+      mqttPort: parseInt(process.env.NEXT_PUBLIC_MQTT_PORT || '1883', 10),
+      mqttClientId:
+        process.env.NEXT_PUBLIC_MQTT_CLIENT_ID || `aituber-${Date.now()}`,
+      mqttProtocol:
+        (process.env.NEXT_PUBLIC_MQTT_PROTOCOL as 'mqtt' | 'websocket') ||
+        'mqtt',
+      mqttWebsocketPath: process.env.NEXT_PUBLIC_MQTT_WEBSOCKET_PATH || '/mqtt',
+      mqttUsername: process.env.NEXT_PUBLIC_MQTT_USERNAME,
+      mqttPassword: process.env.NEXT_PUBLIC_MQTT_PASSWORD,
+      mqttSecure: process.env.NEXT_PUBLIC_MQTT_SECURE === 'true',
+      mqttConnectionStatus: 'disconnected' as const,
 
       // Character
       characterName: process.env.NEXT_PUBLIC_CHARACTER_NAME || 'CHARACTER',

@@ -1,0 +1,352 @@
+name: AITuberKit MQTT Integration TDD Implementation
+description: Test-Driven Development implementation plan for MQTT integration in AITuberKit
+version: 1.0.0
+
+# Test environment setup
+test_environment:
+  mqtt_broker:
+    host: 192.168.0.131
+    port: 1883
+    websocket_port: 8083
+    websocket_path: /mqtt
+  
+  test_data:
+    sample_speech_message:
+      id: "test-msg-001"
+      text: "これはテストメッセージです"
+      type: "speech"
+      priority: "medium"
+      timestamp: "2025-06-15T10:30:00.000Z"
+      emotion: "neutral"
+
+# Implementation phases with TDD approach
+phases:
+  phase_1_mqtt_types_and_config:
+    description: "MQTT type definitions and configuration setup"
+    test_first: true
+    
+    tests:
+      - file: "src/features/mqtt/__tests__/types.test.ts"
+        test_cases:
+          - name: "should validate SpeechPayload interface"
+            description: "Verify all required fields are present and types are correct"
+            test_data:
+              valid_payload:
+                id: "test-001"
+                text: "Hello AITuber"
+                type: "speech"
+                priority: "medium"
+                timestamp: "2025-06-15T10:30:00.000Z"
+              invalid_payloads:
+                - missing_id: { text: "Hello", type: "speech", priority: "medium" }
+                - invalid_type: { id: "test", text: "Hello", type: "invalid", priority: "medium" }
+                - invalid_priority: { id: "test", text: "Hello", type: "speech", priority: "invalid" }
+      
+      - file: "src/features/mqtt/__tests__/config/MqttConfig.test.ts"
+        test_cases:
+          - name: "should load configuration from environment variables"
+            description: "Test configuration loading from process.env"
+            environment_variables:
+              NEXT_PUBLIC_MQTT_ENABLED: "true"
+              NEXT_PUBLIC_MQTT_HOST: "192.168.0.131"
+              NEXT_PUBLIC_MQTT_PORT: "8083"
+              NEXT_PUBLIC_MQTT_PROTOCOL: "websocket"
+              NEXT_PUBLIC_MQTT_WEBSOCKET_PATH: "/mqtt"
+              NEXT_PUBLIC_MQTT_CLIENT_ID: "aituber-test"
+          
+          - name: "should validate configuration correctly"
+            description: "Test configuration validation with valid and invalid configs"
+          
+          - name: "should return disabled config when MQTT is disabled"
+            description: "Test behavior when NEXT_PUBLIC_MQTT_ENABLED=false"
+
+    implementation:
+      files_to_create:
+        - "src/features/mqtt/types/index.ts" # Already created
+        - "src/features/mqtt/config/MqttConfig.ts" # Already created
+      
+      test_commands:
+        setup: "npm test -- --testPathPattern=mqtt.*types --testPathPattern=mqtt.*config"
+        watch: "npm run test:watch -- --testPathPattern=mqtt"
+
+  phase_2_mqtt_subscriber:
+    description: "MQTT message subscription and handling"
+    test_first: true
+    depends_on: ["phase_1_mqtt_types_and_config"]
+    
+    tests:
+      - file: "src/features/mqtt/__tests__/subscribers/MqttSubscriber.test.ts"
+        test_cases:
+          - name: "should connect to MQTT broker successfully"
+            description: "Test WebSocket connection to MQTT broker"
+            mock_requirements:
+              - mqtt_client: "Mock MQTT client for connection testing"
+            
+          - name: "should subscribe to speech topics"
+            description: "Test subscription to aituber/speech/* topics"
+            topics_to_test:
+              - "aituber/speech"
+              - "aituber/speech/alert"
+              - "aituber/speech/notification"
+            
+          - name: "should handle connection errors gracefully"
+            description: "Test error handling and reconnection logic"
+            
+          - name: "should emit events for connection status changes"
+            description: "Test event emission for connection lifecycle"
+            
+          - name: "should parse and validate incoming messages"
+            description: "Test message parsing and SpeechPayload validation"
+            test_messages:
+              valid_message: '{"id":"test-001","text":"Hello","type":"speech","priority":"medium","timestamp":"2025-06-15T10:30:00.000Z"}'
+              invalid_message: '{"text":"Missing required fields"}'
+              malformed_json: '{"invalid json'
+      
+      - file: "src/features/mqtt/__tests__/subscribers/MqttSubscriber.integration.test.ts"
+        test_cases:
+          - name: "should connect to real MQTT broker (192.168.0.131)"
+            description: "Integration test with actual MQTT broker"
+            requires_real_broker: true
+            timeout: 10000
+            
+          - name: "should receive and process real MQTT messages"
+            description: "End-to-end message flow test"
+            requires_real_broker: true
+
+    implementation:
+      files_to_create:
+        - "src/features/mqtt/subscribers/MqttSubscriber.ts" # Already created
+      
+      test_commands:
+        unit: "npm test -- --testPathPattern=subscribers.*MqttSubscriber.test"
+        integration: "npm test -- --testPathPattern=subscribers.*integration"
+
+  phase_3_speech_handler:
+    description: "Speech message processing and TTS integration"
+    test_first: true
+    depends_on: ["phase_2_mqtt_subscriber"]
+    
+    tests:
+      - file: "src/features/mqtt/__tests__/handlers/SpeechHandler.test.ts"
+        test_cases:
+          - name: "should process speech payload successfully"
+            description: "Test conversion of SpeechPayload to Talk object"
+            
+          - name: "should handle different speech types"
+            description: "Test handling of speech, alert, and notification types"
+            test_types: ["speech", "alert", "notification"]
+            
+          - name: "should apply emotion expressions correctly"
+            description: "Test emotion mapping for Live2D/VRM"
+            test_emotions: ["neutral", "happy", "sad", "angry", "relaxed", "surprised"]
+            
+          - name: "should handle priority-based speech processing"
+            description: "Test high-priority speech interruption"
+            
+          - name: "should integrate with existing TTS systems"
+            description: "Test integration with speakCharacter function"
+            mock_requirements:
+              - speakCharacter: "Mock the speakCharacter function"
+              - SpeakQueue: "Mock the SpeakQueue singleton"
+            
+          - name: "should handle errors gracefully"
+            description: "Test error handling and fallback behavior"
+
+    implementation:
+      files_to_create:
+        - "src/features/mqtt/handlers/SpeechHandler.ts" # Already created
+      
+      test_commands:
+        unit: "npm test -- --testPathPattern=handlers.*SpeechHandler"
+
+  phase_4_mqtt_integration:
+    description: "Main MQTT integration controller"
+    test_first: true
+    depends_on: ["phase_3_speech_handler"]
+    
+    tests:
+      - file: "src/features/mqtt/__tests__/MqttIntegration.test.ts"
+        test_cases:
+          - name: "should initialize with configuration"
+            description: "Test initialization with MqttIntegrationConfig"
+            
+          - name: "should start and stop integration correctly"
+            description: "Test lifecycle management"
+            
+          - name: "should handle subscriber events"
+            description: "Test event handling from MqttSubscriber"
+            
+          - name: "should coordinate message processing"
+            description: "Test message flow from subscription to speech"
+            
+          - name: "should manage connection status"
+            description: "Test status reporting and management"
+            
+          - name: "should handle configuration updates"
+            description: "Test dynamic configuration changes"
+
+    implementation:
+      files_to_create:
+        - "src/features/mqtt/MqttIntegration.ts" # Already created
+        - "src/features/mqtt/index.ts" # Already created
+      
+      test_commands:
+        unit: "npm test -- --testPathPattern=MqttIntegration.test"
+
+  phase_5_app_integration:
+    description: "Integration with Next.js application"
+    test_first: true
+    depends_on: ["phase_4_mqtt_integration"]
+    
+    tests:
+      - file: "src/__tests__/integration/mqtt-app-integration.test.ts"
+        test_cases:
+          - name: "should initialize MQTT integration on app start"
+            description: "Test app-level initialization"
+            
+          - name: "should handle MQTT integration in settings"
+            description: "Test settings UI integration"
+            
+          - name: "should persist MQTT status across page reloads"
+            description: "Test state persistence"
+
+    implementation:
+      files_to_modify:
+        - file: "src/pages/_app.tsx"
+          changes:
+            - "Add MQTT integration initialization in useEffect"
+            - "Add cleanup on unmount"
+        
+        - file: "src/features/stores/settings.ts"
+          changes:
+            - "Add MQTT configuration state"
+            - "Add MQTT status tracking"
+        
+        - file: "src/components/settings/other.tsx"
+          changes:
+            - "Add MQTT settings UI components"
+            - "Add connection status display"
+      
+      test_commands:
+        integration: "npm test -- --testPathPattern=integration"
+
+  phase_6_end_to_end_testing:
+    description: "Complete end-to-end testing"
+    test_first: false  # E2E tests after implementation
+    depends_on: ["phase_5_app_integration"]
+    
+    tests:
+      - file: "src/__tests__/e2e/mqtt-speech-flow.test.ts"
+        test_cases:
+          - name: "should receive and speak MQTT message end-to-end"
+            description: "Complete flow from MQTT broker to TTS output"
+            requires_real_broker: true
+            test_flow:
+              1. "Start AITuberKit with MQTT enabled"
+              2. "Connect to MQTT broker (192.168.0.131:8083)"
+              3. "Publish test speech message to aituber/speech"
+              4. "Verify message is received and processed"
+              5. "Verify TTS is triggered with correct parameters"
+              6. "Verify speech queue is populated"
+            
+          - name: "should handle multiple message types correctly"
+            description: "Test different message types and priorities"
+            
+          - name: "should handle connection failures gracefully"
+            description: "Test robustness with broker disconnections"
+
+    implementation:
+      test_commands:
+        e2e: "npm test -- --testPathPattern=e2e"
+        full_suite: "npm test"
+
+# Test data and utilities
+test_utilities:
+  mqtt_test_publisher:
+    description: "Utility to publish test messages to MQTT broker"
+    file: "src/__tests__/utils/mqtt-test-publisher.ts"
+    functions:
+      - publishTestSpeech: "Publish test speech message"
+      - publishTestAlert: "Publish test alert message"
+      - publishTestNotification: "Publish test notification message"
+  
+  mock_factories:
+    description: "Factory functions for creating test mocks"
+    file: "src/__tests__/utils/mock-factories.ts"
+    functions:
+      - createMockSpeechPayload: "Create mock SpeechPayload"
+      - createMockMqttConfig: "Create mock MQTT configuration"
+      - createMockMqttSubscriber: "Create mock MqttSubscriber"
+
+# Implementation order and commands
+implementation_sequence:
+  1:
+    phase: "phase_1_mqtt_types_and_config"
+    commands:
+      - "npm test -- --testPathPattern=mqtt.*types --watch"
+      - "Implement types until tests pass"
+      - "npm test -- --testPathPattern=mqtt.*config --watch"
+      - "Implement configuration until tests pass"
+  
+  2:
+    phase: "phase_2_mqtt_subscriber"
+    commands:
+      - "npm test -- --testPathPattern=subscribers.*MqttSubscriber.test --watch"
+      - "Implement MqttSubscriber until unit tests pass"
+      - "npm test -- --testPathPattern=subscribers.*integration"
+      - "Test with real MQTT broker"
+  
+  3:
+    phase: "phase_3_speech_handler"
+    commands:
+      - "npm test -- --testPathPattern=handlers.*SpeechHandler --watch"
+      - "Implement SpeechHandler until tests pass"
+  
+  4:
+    phase: "phase_4_mqtt_integration"
+    commands:
+      - "npm test -- --testPathPattern=MqttIntegration --watch"
+      - "Implement MqttIntegration until tests pass"
+  
+  5:
+    phase: "phase_5_app_integration"
+    commands:
+      - "npm test -- --testPathPattern=integration --watch"
+      - "Integrate with Next.js app until tests pass"
+  
+  6:
+    phase: "phase_6_end_to_end_testing"
+    commands:
+      - "npm test -- --testPathPattern=e2e"
+      - "Run full test suite"
+      - "npm run build"
+      - "Verify production build"
+
+# Quality gates
+quality_gates:
+  test_coverage:
+    minimum: 85
+    command: "npm run test:coverage"
+  
+  type_checking:
+    command: "npm run typecheck"
+  
+  linting:
+    command: "npm run lint"
+  
+  build_verification:
+    command: "npm run build"
+
+# Success criteria
+success_criteria:
+  - "All unit tests pass (100%)"
+  - "All integration tests pass with real MQTT broker"
+  - "Test coverage >= 85%"
+  - "No TypeScript errors"
+  - "No linting errors"
+  - "Production build succeeds"
+  - "End-to-end flow: MCP Server -> MQTT -> AITuberKit -> TTS works correctly"
+  - "Multiple TTS engines supported"
+  - "Error handling works robustly"
+  - "Configuration via environment variables works"
+  - "Connection recovery works after broker restart"
