@@ -370,6 +370,7 @@ export class SpeechHandler {
 
   /**
    * 高優先度の発話処理
+   * WebSocketからの発話も含めてすべて中断し、緊急メッセージを優先
    */
   private speakWithHighPriority(
     sessionId: string,
@@ -378,15 +379,20 @@ export class SpeechHandler {
     onComplete: () => void
   ): void {
     try {
-      // 現在の発話を停止
+      console.log(`[High Priority] Interrupting all speech for urgent message: ${talk.message}`)
+      
+      // すべての発話を強制停止（WebSocket発話も含む）
       const { SpeakQueue } = require('@/features/messages/speakQueue')
       SpeakQueue.stopAll()
 
-      // 少し待ってから新しい発話を開始
+      // 緊急用のセッションIDを生成（MQTT-URGENT-プレフィックス）
+      const urgentSessionId = `MQTT-URGENT-${Date.now()}`
+
+      // 短い遅延後に高優先度発話を実行
       setTimeout(() => {
-        // 高優先度発話を実行
-        speakCharacter(sessionId, talk, onStart, onComplete)
-      }, 100)
+        console.log(`[High Priority] Starting urgent speech with session: ${urgentSessionId}`)
+        speakCharacter(urgentSessionId, talk, onStart, onComplete)
+      }, 50) // WebSocketより高速に実行
     } catch (error) {
       console.error('High priority speech execution failed:', error)
       throw error

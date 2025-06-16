@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import settingsStore from '@/features/stores/settings'
+import menuStore from '@/features/stores/menu'
 import { TextButton } from '../textButton'
 import { useCallback } from 'react'
-import Link from 'next/link'
 
 const ExternalLinkage = () => {
   const { t } = useTranslation()
@@ -66,15 +66,14 @@ const ExternalLinkage = () => {
             )}
           </p>
         </div>
-        <Link
-          href="#"
-          onClick={(e) => {
-            e.preventDefault()
-            settingsStore.setState({ activeSettingsTab: 'mqtt' })
+        <TextButton
+          onClick={() => {
+            console.log('MQTT設定ボタンがクリックされました')
+            menuStore.setState({ activeSettingsTab: 'mqttBroker' })
           }}
         >
-          <TextButton>{t('GoToMqttSettings')}</TextButton>
-        </Link>
+          {t('GoToMqttSettings')}
+        </TextButton>
       </div>
 
       {/* 注意事項 */}
