@@ -55,7 +55,7 @@ export class SpeechHandler {
       const talk: Talk = this.createTalkFromPayload(payload)
 
       // 発話を実行
-      await this.executeSpeech(talk, payload)
+      this.executeSpeech(talk, payload)
 
       return {
         success: true,
@@ -96,18 +96,18 @@ export class SpeechHandler {
   /**
    * 発話を実行
    */
-  private async executeSpeech(
-    talk: Talk,
-    payload: SpeechPayload
-  ): Promise<void> {
+  private executeSpeech(talk: Talk, payload: SpeechPayload): void {
     try {
+      // セッションIDを生成
+      const sessionId = generateMessageId()
+
       // 優先度に基づく処理の調整
       if (payload.priority === 'high') {
         // 高優先度の場合、現在の発話を中断して即座に処理
-        await this.speakWithHighPriority(talk)
+        this.speakWithHighPriority(sessionId, talk)
       } else {
         // 通常の発話処理
-        await speakCharacter(talk.message, talk)
+        speakCharacter(sessionId, talk)
       }
 
       console.log(`Speech executed successfully for message: ${payload.id}`)
@@ -120,17 +120,17 @@ export class SpeechHandler {
   /**
    * 高優先度の発話処理
    */
-  private async speakWithHighPriority(talk: Talk): Promise<void> {
+  private speakWithHighPriority(sessionId: string, talk: Talk): void {
     try {
       // 現在の発話を停止
-      const { SpeakQueue } = await import('@/features/messages/speakQueue')
+      const { SpeakQueue } = require('@/features/messages/speakQueue')
       SpeakQueue.stopAll()
 
       // 少し待ってから新しい発話を開始
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // 高優先度発話を実行
-      await speakCharacter(talk.message, talk)
+      setTimeout(() => {
+        // 高優先度発話を実行
+        speakCharacter(sessionId, talk)
+      }, 100)
     } catch (error) {
       console.error('High priority speech execution failed:', error)
       throw error
