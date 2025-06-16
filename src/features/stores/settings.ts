@@ -127,6 +127,11 @@ interface Integrations {
   mqttPassword?: string
   mqttSecure: boolean
   mqttConnectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error'
+  // MQTT再接続設定
+  mqttReconnectEnabled: boolean
+  mqttReconnectInitialDelay: number
+  mqttReconnectMaxDelay: number
+  mqttReconnectMaxAttempts: number
 }
 
 interface Character {
@@ -330,12 +335,27 @@ const settingsStore = create<SettingsState>()(
         process.env.NEXT_PUBLIC_MQTT_CLIENT_ID || `aituber-${Date.now()}`,
       mqttProtocol:
         (process.env.NEXT_PUBLIC_MQTT_PROTOCOL as 'mqtt' | 'websocket') ||
-        'mqtt',
+        'websocket',
       mqttWebsocketPath: process.env.NEXT_PUBLIC_MQTT_WEBSOCKET_PATH || '/mqtt',
       mqttUsername: process.env.NEXT_PUBLIC_MQTT_USERNAME,
       mqttPassword: process.env.NEXT_PUBLIC_MQTT_PASSWORD,
       mqttSecure: process.env.NEXT_PUBLIC_MQTT_SECURE === 'true',
       mqttConnectionStatus: 'disconnected' as const,
+      // MQTT再接続設定のデフォルト値
+      mqttReconnectEnabled:
+        process.env.NEXT_PUBLIC_MQTT_RECONNECT_ENABLED !== 'false', // デフォルトで有効
+      mqttReconnectInitialDelay: parseInt(
+        process.env.NEXT_PUBLIC_MQTT_RECONNECT_INITIAL_DELAY || '1000',
+        10
+      ),
+      mqttReconnectMaxDelay: parseInt(
+        process.env.NEXT_PUBLIC_MQTT_RECONNECT_MAX_DELAY || '30000',
+        10
+      ),
+      mqttReconnectMaxAttempts: parseInt(
+        process.env.NEXT_PUBLIC_MQTT_RECONNECT_MAX_ATTEMPTS || '5',
+        10
+      ),
 
       // Character
       characterName: process.env.NEXT_PUBLIC_CHARACTER_NAME || 'CHARACTER',
