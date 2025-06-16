@@ -381,7 +381,7 @@
   "Important": "重要",
   "MqttBrokerNote1": "MQTTブローカーが正しく設定され、ネットワーク経由でアクセス可能である必要があります。",
   "MqttBrokerNote2": "Claude MCPサーバーからの音声通知を受信するには、適切なトピックに購読する必要があります。",
-  "MqttBrokerNote3": "セキュリティのため、パブリックネットワーク上では認証情報を設定することを推奨します。",
+  "MqttBrokerNote3": "高優先度メッセージはWebSocketを含む他の発話を中断して再生されます。セキュリティのため、パブリックネットワーク上では認証情報を設定することを推奨します。",
   "MqttInvalidConfiguration": "設定が無効です",
   "MqttPayloadOptions": "ペイロードオプション",
   "MqttPayloadOptionsDescription": "MQTTメッセージの詳細設定を行います。これらの設定はClaude MCPサーバーとの統合に使用されます。",
