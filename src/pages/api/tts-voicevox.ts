@@ -15,13 +15,18 @@ export default async function handler(
     serverUrl || process.env.VOICEVOX_SERVER_URL || 'http://localhost:50021'
 
   try {
-    // 1. Audio Query の生成
+    // テキストの長さ制限（VOICEVOXの推奨値）
+    if (text.length > 200) {
+      return res.status(400).json({ error: 'テキストが長すぎます（200文字以内）' })
+    }
+
+    // 1. Audio Query の生成 - POSTボディでテキストを送信
     const queryResponse = await axios.post(
-      `${apiUrl}/audio_query?speaker=${speaker}&text=${encodeURIComponent(text)}`,
-      null,
+      `${apiUrl}/audio_query?speaker=${speaker}`,
+      text,
       {
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'text/plain; charset=utf-8',
         },
         timeout: 30000,
       }
@@ -50,6 +55,28 @@ export default async function handler(
     synthesisResponse.data.pipe(res)
   } catch (error) {
     console.error('Error in VOICEVOX TTS:', error)
-    res.status(500).json({ error: 'Internal Server Error' })
+    
+    // 詳細なエラー情報を提供
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as any
+      console.error('VOICEVOX API Error Details:', {
+        status: axiosError.response?.status,
+        data: axiosError.response?.data,
+        message: axiosError.message,
+        url: axiosError.config?.url
+      })
+      
+      if (axiosError.response?.status === 422) {
+        return res.status(422).json({ 
+          error: 'VOICEVOXでテキスト処理エラーが発生しました。テキストに問題がある可能性があります。' 
+        })
+      }
+      
+      return res.status(500).json({ 
+        error: `VOICEVOX APIエラー: ${axiosError.response?.status || 'Unknown'} - ${axiosError.message}` 
+      })
+    }
+    
+    res.status(500).json({ error: `VOICEVOX TTS処理エラー: ${error instanceof Error ? error.message : 'Unknown error'}` })
   }
 }

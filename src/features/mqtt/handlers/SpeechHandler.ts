@@ -273,6 +273,15 @@ export class SpeechHandler {
     // 連続するスペースを一つに統一
     sanitized = sanitized.replace(/\s+/g, ' ')
 
+    // VOICEVOXの文字数制限（200文字）を適用
+    if (sanitized.length > 200) {
+      console.warn(
+        `[TTS Sanitize] Text too long (${sanitized.length} chars), truncating to 200 chars`
+      )
+      // 文の途中で切れないよう、句読点で区切りながら短縮
+      sanitized = this.truncateTextGracefully(sanitized, 200)
+    }
+
     // URLエンコードで問題を起こす可能性のある文字をチェック
     try {
       encodeURIComponent(sanitized)
@@ -287,6 +296,25 @@ export class SpeechHandler {
       `[TTS Sanitize] Original: "${text}" -> Sanitized: "${sanitized}"`
     )
     return sanitized
+  }
+
+  /**
+   * テキストを指定した長さで適切に切り詰める
+   */
+  private truncateTextGracefully(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text
+
+    // 句読点や区切り文字での分割を試行
+    const breakPoints = ['。', '！', '？', '、', '，', ' ', '　']
+    
+    for (let i = maxLength - 1; i >= maxLength * 0.7; i--) {
+      if (breakPoints.includes(text[i])) {
+        return text.substring(0, i + 1)
+      }
+    }
+
+    // 適切な区切り位置が見つからない場合は、「...」を付けて切り詰め
+    return text.substring(0, maxLength - 3) + '...'
   }
 
   /**
