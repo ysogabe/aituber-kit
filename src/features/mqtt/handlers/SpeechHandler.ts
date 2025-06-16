@@ -12,6 +12,39 @@ import {
 import { getAIChatResponseStream } from '@/features/chat/aiChatFactory'
 
 /**
+ * テキストからすべての感情タグ `[...]` を抽出し、最後の感情タグを採用する
+ * @param text 入力テキスト
+ * @returns 最後の感情タグと感情タグを除去したテキスト
+ */
+const extractEmotion = (
+  text: string
+): { emotionTag: string; remainingText: string } => {
+  // すべての感情タグを検出
+  const emotionMatches = text.match(/\[(.*?)\]/g)
+
+  if (emotionMatches && emotionMatches.length > 0) {
+    // 最後の感情タグを採用
+    const lastEmotionTag = emotionMatches[emotionMatches.length - 1]
+
+    // すべての感情タグを除去したテキストを作成
+    let cleanedText = text
+    emotionMatches.forEach((tag) => {
+      cleanedText = cleanedText.replace(tag, '')
+    })
+
+    // 連続するスペースを1つに統一し、前後の空白を除去
+    cleanedText = cleanedText.replace(/\s+/g, ' ').trim()
+
+    return {
+      emotionTag: lastEmotionTag,
+      remainingText: cleanedText,
+    }
+  }
+
+  return { emotionTag: '', remainingText: text }
+}
+
+/**
  * MQTT経由で受信した発話指示を処理するハンドラー
  */
 export class SpeechHandler {
@@ -100,13 +133,26 @@ export class SpeechHandler {
    */
   private async processDirectSend(payload: SpeechPayload): Promise<void> {
     const processedText = this.preprocessSpeechText(payload)
-    const talk = this.createTalkFromPayload({ ...payload, text: processedText })
 
-    // 感情表現の適用
-    if (payload.emotion) {
-      await this.applyEmotion(payload.emotion)
+    // 処理済みテキストから感情タグを抽出
+    const { emotionTag, remainingText } = extractEmotion(processedText)
+
+    // 感情を決定（感情タグ > ペイロードの感情 > デフォルト）
+    let finalEmotion = payload.emotion || 'neutral'
+    if (emotionTag) {
+      const extractedEmotion = emotionTag
+        .slice(1, -1)
+        .toLowerCase() as EmotionType
+      finalEmotion = extractedEmotion
     }
 
+    const talk = this.createTalkFromPayload({
+      ...payload,
+      text: remainingText, // 感情タグを除去したテキストを使用
+      emotion: finalEmotion,
+    })
+
+    await this.applyEmotion(finalEmotion)
     this.executeSpeech(talk, payload)
   }
 
@@ -122,16 +168,25 @@ export class SpeechHandler {
       const aiResponse = await this.generateAiResponse(aiPrompt)
 
       if (aiResponse) {
-        const aiTalk = this.createTalkFromPayload({
-          ...payload,
-          text: aiResponse,
-          emotion: payload.emotion || 'happy', // AI生成時はデフォルトで明るい感情
-        })
+        // AI応答から感情タグを抽出
+        const { emotionTag, remainingText } = extractEmotion(aiResponse)
 
-        if (payload.emotion) {
-          await this.applyEmotion(payload.emotion)
+        // 感情を決定（感情タグ > ペイロードの感情 > デフォルト）
+        let finalEmotion = payload.emotion || 'happy'
+        if (emotionTag) {
+          const extractedEmotion = emotionTag
+            .slice(1, -1)
+            .toLowerCase() as EmotionType
+          finalEmotion = extractedEmotion
         }
 
+        const aiTalk = this.createTalkFromPayload({
+          ...payload,
+          text: remainingText, // 感情タグを除去したテキストを使用
+          emotion: finalEmotion,
+        })
+
+        await this.applyEmotion(finalEmotion)
         this.executeSpeech(aiTalk, payload)
       } else {
         // AI生成に失敗した場合は直接送信にフォールバック
@@ -160,16 +215,26 @@ export class SpeechHandler {
 
       if (aiResponse && aiResponse.trim().length > 0) {
         console.log(`[User Input Mode] Using AI response for speech`)
-        const responseTalk = this.createTalkFromPayload({
-          ...payload,
-          text: aiResponse.trim(),
-          emotion: payload.emotion || 'neutral',
-        })
 
-        if (payload.emotion) {
-          await this.applyEmotion(payload.emotion)
+        // AI応答から感情タグを抽出
+        const { emotionTag, remainingText } = extractEmotion(aiResponse.trim())
+
+        // 感情を決定（感情タグ > ペイロードの感情 > デフォルト）
+        let finalEmotion = payload.emotion || 'neutral'
+        if (emotionTag) {
+          const extractedEmotion = emotionTag
+            .slice(1, -1)
+            .toLowerCase() as EmotionType
+          finalEmotion = extractedEmotion
         }
 
+        const responseTalk = this.createTalkFromPayload({
+          ...payload,
+          text: remainingText, // 感情タグを除去したテキストを使用
+          emotion: finalEmotion,
+        })
+
+        await this.applyEmotion(finalEmotion)
         this.executeSpeech(responseTalk, payload)
       } else {
         console.log(
@@ -306,7 +371,7 @@ export class SpeechHandler {
 
     // 句読点や区切り文字での分割を試行
     const breakPoints = ['。', '！', '？', '、', '，', ' ', '　']
-    
+
     for (let i = maxLength - 1; i >= maxLength * 0.7; i--) {
       if (breakPoints.includes(text[i])) {
         return text.substring(0, i + 1)
@@ -379,8 +444,10 @@ export class SpeechHandler {
     onComplete: () => void
   ): void {
     try {
-      console.log(`[High Priority] Interrupting all speech for urgent message: ${talk.message}`)
-      
+      console.log(
+        `[High Priority] Interrupting all speech for urgent message: ${talk.message}`
+      )
+
       // すべての発話を強制停止（WebSocket発話も含む）
       const { SpeakQueue } = require('@/features/messages/speakQueue')
       SpeakQueue.stopAll()
@@ -390,7 +457,9 @@ export class SpeechHandler {
 
       // 短い遅延後に高優先度発話を実行
       setTimeout(() => {
-        console.log(`[High Priority] Starting urgent speech with session: ${urgentSessionId}`)
+        console.log(
+          `[High Priority] Starting urgent speech with session: ${urgentSessionId}`
+        )
         speakCharacter(urgentSessionId, talk, onStart, onComplete)
       }, 50) // WebSocketより高速に実行
     } catch (error) {
