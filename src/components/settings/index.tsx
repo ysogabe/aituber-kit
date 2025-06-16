@@ -15,6 +15,8 @@ import Slide from './slide'
 import Log from './log'
 import Other from './other'
 import SpeechInput from './speechInput'
+import MqttSettings from './mqtt'
+import MqttBrokerSettings from './mqttBroker'
 
 type Props = {
   onClickClose: () => void
@@ -57,6 +59,8 @@ type TabKey =
   | 'log'
   | 'other'
   | 'speechInput'
+  | 'mqtt'
+  | 'mqttBroker'
 
 // アイコンのパスマッピング
 const tabIconMapping: Record<TabKey, string> = {
@@ -70,6 +74,8 @@ const tabIconMapping: Record<TabKey, string> = {
   log: '/images/setting-icons/conversation-history.svg',
   other: '/images/setting-icons/other-settings.svg',
   speechInput: '/images/setting-icons/microphone-settings.svg',
+  mqtt: '/images/icons/external-link.svg',
+  mqttBroker: '/images/icons/external-link.svg',
 }
 
 const Main = () => {
@@ -120,6 +126,10 @@ const Main = () => {
       key: 'other',
       label: t('OtherSettings'),
     },
+    {
+      key: 'mqttBroker',
+      label: t('MqttBrokerSettings'),
+    },
   ]
 
   const renderTabContent = () => {
@@ -144,6 +154,9 @@ const Main = () => {
         return <Other />
       case 'speechInput':
         return <SpeechInput />
+      // MQTT設定はMQTTブローカー設定に統合されました
+      case 'mqttBroker':
+        return <MqttBrokerSettings />
     }
   }
 
@@ -165,7 +178,7 @@ const Main = () => {
                       alt={`${tab.label} icon`}
                       width={20}
                       height={20}
-                      className={`w-5 h-5 mr-2 ${activeTab === tab.key ? 'brightness-0 invert' : ''}`}
+                      className={`w-5 h-5 mr-2 ${activeTab === tab.key ? 'brightness-0 invert' : 'text-gray-600'}`}
                     />
                     {tab.label}
                   </button>

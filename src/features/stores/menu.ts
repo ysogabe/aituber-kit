@@ -11,6 +11,7 @@ type SettingsTabKey =
   | 'slide'
   | 'log'
   | 'other'
+  | 'mqttBroker'
 interface MenuState {
   showWebcam: boolean
   showCapture: boolean

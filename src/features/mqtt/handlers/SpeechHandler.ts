@@ -1,10 +1,48 @@
 import { SpeechPayload, MqttMessageHandleResult } from '../types'
-import { Talk, EmotionType } from '@/features/messages/messages'
+import { Talk, EmotionType, Message } from '@/features/messages/messages'
 import { speakCharacter } from '@/features/messages/speakCharacter'
 import settingsStore from '@/features/stores/settings'
 import homeStore from '@/features/stores/home'
 import { Live2DHandler } from '@/features/messages/live2dHandler'
 import { generateMessageId } from '@/utils/messageUtils'
+import {
+  useMqttBrokerStore,
+  type SendMode,
+} from '@/features/stores/mqttBrokerSettings'
+import { getAIChatResponseStream } from '@/features/chat/aiChatFactory'
+
+/**
+ * テキストからすべての感情タグ `[...]` を抽出し、最後の感情タグを採用する
+ * @param text 入力テキスト
+ * @returns 最後の感情タグと感情タグを除去したテキスト
+ */
+const extractEmotion = (
+  text: string
+): { emotionTag: string; remainingText: string } => {
+  // すべての感情タグを検出
+  const emotionMatches = text.match(/\[(.*?)\]/g)
+
+  if (emotionMatches && emotionMatches.length > 0) {
+    // 最後の感情タグを採用
+    const lastEmotionTag = emotionMatches[emotionMatches.length - 1]
+
+    // すべての感情タグを除去したテキストを作成
+    let cleanedText = text
+    emotionMatches.forEach((tag) => {
+      cleanedText = cleanedText.replace(tag, '')
+    })
+
+    // 連続するスペースを1つに統一し、前後の空白を除去
+    cleanedText = cleanedText.replace(/\s+/g, ' ').trim()
+
+    return {
+      emotionTag: lastEmotionTag,
+      remainingText: cleanedText,
+    }
+  }
+
+  return { emotionTag: '', remainingText: text }
+}
 
 /**
  * MQTT経由で受信した発話指示を処理するハンドラー
@@ -46,16 +84,12 @@ export class SpeechHandler {
         }
       }
 
-      // 感情表現の適用（Live2D/VRMの場合）
-      if (payload.emotion) {
-        await this.applyEmotion(payload.emotion)
-      }
+      // 送信モードを取得
+      const sendMode = useMqttBrokerStore.getState().sendMode
+      console.log(`Processing with send mode: ${sendMode}`)
 
-      // Talkオブジェクトを作成
-      const talk: Talk = this.createTalkFromPayload(payload)
-
-      // 発話を実行
-      this.executeSpeech(talk, payload)
+      // 送信モードに応じて処理を分岐
+      await this.processBySendMode(payload, sendMode)
 
       return {
         success: true,
@@ -72,13 +106,280 @@ export class SpeechHandler {
   }
 
   /**
+   * 送信モードに応じてペイロードを処理
+   */
+  private async processBySendMode(
+    payload: SpeechPayload,
+    sendMode: SendMode
+  ): Promise<void> {
+    switch (sendMode) {
+      case 'direct_send':
+        await this.processDirectSend(payload)
+        break
+      case 'ai_generated':
+        await this.processAiGenerated(payload)
+        break
+      case 'user_input':
+        await this.processUserInput(payload)
+        break
+      default:
+        console.warn(`Unknown send mode: ${sendMode}, using direct_send`)
+        await this.processDirectSend(payload)
+    }
+  }
+
+  /**
+   * 直接送信モード: 受信したメッセージをそのまま発話
+   */
+  private async processDirectSend(payload: SpeechPayload): Promise<void> {
+    const processedText = this.preprocessSpeechText(payload)
+
+    // 処理済みテキストから感情タグを抽出
+    const { emotionTag, remainingText } = extractEmotion(processedText)
+
+    // 感情を決定（感情タグ > ペイロードの感情 > デフォルト）
+    let finalEmotion = payload.emotion || 'neutral'
+    if (emotionTag) {
+      const extractedEmotion = emotionTag
+        .slice(1, -1)
+        .toLowerCase() as EmotionType
+      finalEmotion = extractedEmotion
+    }
+
+    const talk = this.createTalkFromPayload({
+      ...payload,
+      text: remainingText, // 感情タグを除去したテキストを使用
+      emotion: finalEmotion,
+    })
+
+    await this.applyEmotion(finalEmotion)
+    this.executeSpeech(talk, payload)
+  }
+
+  /**
+   * AI生成モード: 受信したメッセージをAIが処理して自然な発話を生成
+   */
+  private async processAiGenerated(payload: SpeechPayload): Promise<void> {
+    try {
+      // AIにメッセージを処理させて自然な発話を生成
+      const aiPrompt = `以下のメッセージを自然で親しみやすい話し方に変換して発話してください：「${payload.text}」`
+
+      // AI応答を生成（チャット機能を使用）
+      const aiResponse = await this.generateAiResponse(aiPrompt)
+
+      if (aiResponse) {
+        // AI応答から感情タグを抽出
+        const { emotionTag, remainingText } = extractEmotion(aiResponse)
+
+        // 感情を決定（感情タグ > ペイロードの感情 > デフォルト）
+        let finalEmotion = payload.emotion || 'happy'
+        if (emotionTag) {
+          const extractedEmotion = emotionTag
+            .slice(1, -1)
+            .toLowerCase() as EmotionType
+          finalEmotion = extractedEmotion
+        }
+
+        const aiTalk = this.createTalkFromPayload({
+          ...payload,
+          text: remainingText, // 感情タグを除去したテキストを使用
+          emotion: finalEmotion,
+        })
+
+        await this.applyEmotion(finalEmotion)
+        this.executeSpeech(aiTalk, payload)
+      } else {
+        // AI生成に失敗した場合は直接送信にフォールバック
+        console.warn(
+          'AI response generation failed, falling back to direct send'
+        )
+        await this.processDirectSend(payload)
+      }
+    } catch (error) {
+      console.error('AI generation failed:', error)
+      await this.processDirectSend(payload) // フォールバック
+    }
+  }
+
+  /**
+   * ユーザー入力モード: 受信したメッセージをユーザー入力として扱い、AIが応答
+   */
+  private async processUserInput(payload: SpeechPayload): Promise<void> {
+    try {
+      console.log(`[User Input Mode] Processing user input: "${payload.text}"`)
+
+      // ユーザー入力として処理し、AI応答を生成
+      const aiResponse = await this.generateAiResponse(payload.text)
+
+      console.log(`[User Input Mode] AI response: "${aiResponse}"`)
+
+      if (aiResponse && aiResponse.trim().length > 0) {
+        console.log(`[User Input Mode] Using AI response for speech`)
+
+        // AI応答から感情タグを抽出
+        const { emotionTag, remainingText } = extractEmotion(aiResponse.trim())
+
+        // 感情を決定（感情タグ > ペイロードの感情 > デフォルト）
+        let finalEmotion = payload.emotion || 'neutral'
+        if (emotionTag) {
+          const extractedEmotion = emotionTag
+            .slice(1, -1)
+            .toLowerCase() as EmotionType
+          finalEmotion = extractedEmotion
+        }
+
+        const responseTalk = this.createTalkFromPayload({
+          ...payload,
+          text: remainingText, // 感情タグを除去したテキストを使用
+          emotion: finalEmotion,
+        })
+
+        await this.applyEmotion(finalEmotion)
+        this.executeSpeech(responseTalk, payload)
+      } else {
+        console.log(
+          `[User Input Mode] AI response failed, using default response`
+        )
+        // AI応答生成に失敗した場合のデフォルト応答
+        const defaultResponse = 'すみません、よく理解できませんでした'
+        const defaultTalk = this.createTalkFromPayload({
+          ...payload,
+          text: defaultResponse,
+          emotion: 'sad',
+        })
+
+        await this.applyEmotion('sad')
+        this.executeSpeech(defaultTalk, payload)
+      }
+    } catch (error) {
+      console.error('[User Input Mode] Processing failed:', error)
+      console.log(`[User Input Mode] Falling back to direct send`)
+      await this.processDirectSend(payload) // フォールバック
+    }
+  }
+
+  /**
+   * AI応答を生成
+   */
+  private async generateAiResponse(input: string): Promise<string | null> {
+    try {
+      console.log(`[AI Response] Generating response for: "${input}"`)
+      const ss = settingsStore.getState()
+
+      const messages: Message[] = [
+        {
+          role: 'system',
+          content: ss.systemPrompt || 'You are a friendly AI assistant.',
+        },
+        {
+          role: 'user',
+          content: input,
+        },
+      ]
+
+      console.log(
+        `[AI Response] Calling getAIChatResponseStream with ${messages.length} messages`
+      )
+      const stream = await getAIChatResponseStream(messages)
+      if (!stream) {
+        console.warn(
+          `[AI Response] No stream returned from getAIChatResponseStream`
+        )
+        return null
+      }
+
+      console.log(`[AI Response] Reading stream...`)
+      const reader = stream.getReader()
+      let fullResponse = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) {
+          fullResponse += value
+          console.log(`[AI Response] Received chunk: "${value}"`)
+        }
+      }
+
+      const trimmedResponse = fullResponse.trim()
+      console.log(`[AI Response] Final response: "${trimmedResponse}"`)
+      return trimmedResponse || null
+    } catch (error) {
+      console.error('[AI Response] Failed to generate AI response:', error)
+      return null
+    }
+  }
+
+  /**
    * 発話ペイロードからTalkオブジェクトを作成
    */
   private createTalkFromPayload(payload: SpeechPayload): Talk {
+    // テキストをサニタイズしてVOICEVOXエラーを防ぐ
+    const sanitizedText = this.sanitizeTextForTTS(payload.text)
+
     return {
       emotion: (payload.emotion || 'neutral') as EmotionType,
-      message: payload.text,
+      message: sanitizedText,
     }
+  }
+
+  /**
+   * TTS用にテキストをサニタイズ
+   */
+  private sanitizeTextForTTS(text: string): string {
+    if (!text) return ''
+
+    // 基本的なクリーニング
+    let sanitized = text.trim()
+
+    // 異常な文字や制御文字を除去
+    sanitized = sanitized.replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+
+    // 連続するスペースを一つに統一
+    sanitized = sanitized.replace(/\s+/g, ' ')
+
+    // VOICEVOXの文字数制限（200文字）を適用
+    if (sanitized.length > 200) {
+      console.warn(
+        `[TTS Sanitize] Text too long (${sanitized.length} chars), truncating to 200 chars`
+      )
+      // 文の途中で切れないよう、句読点で区切りながら短縮
+      sanitized = this.truncateTextGracefully(sanitized, 200)
+    }
+
+    // URLエンコードで問題を起こす可能性のある文字をチェック
+    try {
+      encodeURIComponent(sanitized)
+    } catch (error) {
+      console.warn(
+        `[TTS Sanitize] Text encoding failed, using fallback: ${error}`
+      )
+      return 'メッセージを処理できませんでした'
+    }
+
+    console.log(
+      `[TTS Sanitize] Original: "${text}" -> Sanitized: "${sanitized}"`
+    )
+    return sanitized
+  }
+
+  /**
+   * テキストを指定した長さで適切に切り詰める
+   */
+  private truncateTextGracefully(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text
+
+    // 句読点や区切り文字での分割を試行
+    const breakPoints = ['。', '！', '？', '、', '，', ' ', '　']
+
+    for (let i = maxLength - 1; i >= maxLength * 0.7; i--) {
+      if (breakPoints.includes(text[i])) {
+        return text.substring(0, i + 1)
+      }
+    }
+
+    // 適切な区切り位置が見つからない場合は、「...」を付けて切り詰め
+    return text.substring(0, maxLength - 3) + '...'
   }
 
   /**
@@ -98,16 +399,31 @@ export class SpeechHandler {
    */
   private executeSpeech(talk: Talk, payload: SpeechPayload): void {
     try {
+      // テキストのバリデーション
+      if (!talk.message || talk.message.trim().length === 0) {
+        console.warn(`Empty speech text for message: ${payload.id}`)
+        return
+      }
+
       // セッションIDを生成
       const sessionId = generateMessageId()
+
+      // コールバック関数を定義
+      const onStart = () => {
+        console.log(`Started speech for MQTT message: ${payload.id}`)
+      }
+
+      const onComplete = () => {
+        console.log(`Completed speech for MQTT message: ${payload.id}`)
+      }
 
       // 優先度に基づく処理の調整
       if (payload.priority === 'high') {
         // 高優先度の場合、現在の発話を中断して即座に処理
-        this.speakWithHighPriority(sessionId, talk)
+        this.speakWithHighPriority(sessionId, talk, onStart, onComplete)
       } else {
         // 通常の発話処理
-        speakCharacter(sessionId, talk)
+        speakCharacter(sessionId, talk, onStart, onComplete)
       }
 
       console.log(`Speech executed successfully for message: ${payload.id}`)
@@ -119,18 +435,33 @@ export class SpeechHandler {
 
   /**
    * 高優先度の発話処理
+   * WebSocketからの発話も含めてすべて中断し、緊急メッセージを優先
    */
-  private speakWithHighPriority(sessionId: string, talk: Talk): void {
+  private speakWithHighPriority(
+    sessionId: string,
+    talk: Talk,
+    onStart: () => void,
+    onComplete: () => void
+  ): void {
     try {
-      // 現在の発話を停止
+      console.log(
+        `[High Priority] Interrupting all speech for urgent message: ${talk.message}`
+      )
+
+      // すべての発話を強制停止（WebSocket発話も含む）
       const { SpeakQueue } = require('@/features/messages/speakQueue')
       SpeakQueue.stopAll()
 
-      // 少し待ってから新しい発話を開始
+      // 緊急用のセッションIDを生成（MQTT-URGENT-プレフィックス）
+      const urgentSessionId = `MQTT-URGENT-${Date.now()}`
+
+      // 短い遅延後に高優先度発話を実行
       setTimeout(() => {
-        // 高優先度発話を実行
-        speakCharacter(sessionId, talk)
-      }, 100)
+        console.log(
+          `[High Priority] Starting urgent speech with session: ${urgentSessionId}`
+        )
+        speakCharacter(urgentSessionId, talk, onStart, onComplete)
+      }, 50) // WebSocketより高速に実行
     } catch (error) {
       console.error('High priority speech execution failed:', error)
       throw error
@@ -174,13 +505,14 @@ export class SpeechHandler {
   async handleError(error: Error, payload?: SpeechPayload): Promise<void> {
     try {
       const errorMessage = 'メッセージの処理中にエラーが発生しました。'
+      const sessionId = generateMessageId()
 
       const errorTalk: Talk = {
         emotion: 'sad',
         message: errorMessage,
       }
 
-      await speakCharacter(errorMessage, errorTalk)
+      speakCharacter(sessionId, errorTalk)
     } catch (speechError) {
       console.error('Failed to speak error message:', speechError)
     }
