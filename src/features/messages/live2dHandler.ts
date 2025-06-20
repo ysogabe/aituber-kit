@@ -1,6 +1,7 @@
 import { Talk } from './messages'
 import homeStore from '@/features/stores/home'
 import settingsStore from '@/features/stores/settings'
+import { audioContextManager } from '@/utils/audioContextManager'
 
 export class Live2DHandler {
   private static idleMotionInterval: NodeJS.Timeout | null = null // インターバルIDを保持
@@ -55,8 +56,18 @@ export class Live2DHandler {
         motion = ss.surprisedMotionGroup
     }
 
-    // AudioContextの作成
-    const audioContext = new AudioContext()
+    // AudioContextの取得（共有）
+    let audioContext: AudioContext
+    try {
+      audioContext = await audioContextManager.getOrCreateContext()
+    } catch (error) {
+      console.warn(
+        'AudioContext not available, skipping audio processing:',
+        error
+      )
+      return
+    }
+
     let decodedAudio: AudioBuffer
 
     if (isNeedDecode) {

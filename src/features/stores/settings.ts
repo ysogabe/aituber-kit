@@ -663,6 +663,20 @@ const settingsStore = create<SettingsState>()(
           state.includeSystemMessagesInCustomApi,
         initialSpeechTimeout: state.initialSpeechTimeout,
         chatLogWidth: state.chatLogWidth,
+        // MQTT設定を永続化対象に追加
+        mqttEnabled: state.mqttEnabled,
+        mqttHost: state.mqttHost,
+        mqttPort: state.mqttPort,
+        mqttClientId: state.mqttClientId,
+        mqttProtocol: state.mqttProtocol,
+        mqttWebsocketPath: state.mqttWebsocketPath,
+        mqttUsername: state.mqttUsername,
+        mqttPassword: state.mqttPassword,
+        mqttSecure: state.mqttSecure,
+        mqttReconnectEnabled: state.mqttReconnectEnabled,
+        mqttReconnectInitialDelay: state.mqttReconnectInitialDelay,
+        mqttReconnectMaxDelay: state.mqttReconnectMaxDelay,
+        mqttReconnectMaxAttempts: state.mqttReconnectMaxAttempts,
       }),
     }
   )

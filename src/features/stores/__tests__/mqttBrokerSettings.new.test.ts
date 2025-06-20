@@ -10,7 +10,7 @@ const localStorageMock = {
 }
 
 Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock
+  value: localStorageMock,
 })
 
 describe('MQTT Broker Settings Store (New)', () => {
@@ -41,7 +41,7 @@ describe('MQTT Broker Settings Store (New)', () => {
       expect(state.brokerPort).toBe(1883)
       expect(state.sendMode).toBe('direct_send')
       expect(state.connectionStatus).toBe('disconnected')
-      
+
       // ペイロードオプションのデフォルト値
       expect(state.defaultMessageType).toBe('speech')
       expect(state.defaultPriority).toBe('medium')
@@ -52,7 +52,7 @@ describe('MQTT Broker Settings Store (New)', () => {
 
     it('clientIdが生成される', () => {
       const { result } = renderHook(() => useMqttBrokerStore())
-      
+
       expect(result.current.clientId).toBeDefined()
       expect(typeof result.current.clientId).toBe('string')
       expect(result.current.clientId.length).toBeGreaterThan(0)
@@ -195,7 +195,7 @@ describe('MQTT Broker Settings Store (New)', () => {
 
       // 変更された項目
       expect(result.current.brokerUrl).toBe('mqtt://updated.example.com:1883')
-      
+
       // 変更されていない項目
       expect(result.current.enabled).toBe(true)
       expect(result.current.defaultMessageType).toBe('alert')
@@ -208,8 +208,8 @@ describe('MQTT Broker Settings Store (New)', () => {
       const { result } = renderHook(() => useMqttBrokerStore())
 
       const validTypes = ['speech', 'alert', 'notification'] as const
-      
-      validTypes.forEach(type => {
+
+      validTypes.forEach((type) => {
         act(() => {
           result.current.updateMqttBrokerConfig({ defaultMessageType: type })
         })
@@ -221,8 +221,8 @@ describe('MQTT Broker Settings Store (New)', () => {
       const { result } = renderHook(() => useMqttBrokerStore())
 
       const validPriorities = ['high', 'medium', 'low'] as const
-      
-      validPriorities.forEach(priority => {
+
+      validPriorities.forEach((priority) => {
         act(() => {
           result.current.updateMqttBrokerConfig({ defaultPriority: priority })
         })
@@ -233,9 +233,16 @@ describe('MQTT Broker Settings Store (New)', () => {
     it('正しい感情タイプのみ受け入れる', () => {
       const { result } = renderHook(() => useMqttBrokerStore())
 
-      const validEmotions = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised'] as const
-      
-      validEmotions.forEach(emotion => {
+      const validEmotions = [
+        'neutral',
+        'happy',
+        'angry',
+        'sad',
+        'relaxed',
+        'surprised',
+      ] as const
+
+      validEmotions.forEach((emotion) => {
         act(() => {
           result.current.updateMqttBrokerConfig({ defaultEmotion: emotion })
         })

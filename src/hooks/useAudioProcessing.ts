@@ -1,7 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-
-// AudioContext の型定義を拡張
-type AudioContextType = typeof AudioContext
+import { audioContextManager } from '@/utils/audioContextManager'
 
 /**
  * オーディオ処理のためのカスタムフック
@@ -12,19 +10,25 @@ export const useAudioProcessing = () => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
 
-  // AudioContextの初期化
+  // AudioContextの初期化（遅延）
   useEffect(() => {
-    const AudioContextClass = (window.AudioContext ||
-      (window as any).webkitAudioContext) as AudioContextType
-    const context = new AudioContextClass()
-    setAudioContext(context)
+    // 既存のAudioContextがあれば使用
+    const existingContext = audioContextManager.getContext()
+    if (existingContext) {
+      setAudioContext(existingContext)
+    } else {
+      // AudioContextが利用可能になったら設定
+      audioContextManager.onReady((context) => {
+        setAudioContext(context)
+      })
+    }
 
     // クリーンアップ関数
     return () => {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop()
       }
-      context.close().catch(console.error)
+      // AudioContextは共有なのでここではクローズしない
     }
   }, [mediaRecorder])
 

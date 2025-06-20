@@ -13,6 +13,7 @@ import {
   initializeMqttIntegration,
   cleanupMqttIntegration,
 } from '@/features/mqtt'
+import { mqttBrokerIntegration } from '@/features/mqtt/MqttBrokerIntegration'
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
@@ -39,22 +40,51 @@ export default function App({ Component, pageProps }: AppProps) {
       homeStore.setState({ userOnboarded: true })
     }
 
-    // Initialize MQTT integration
+    // Initialize MQTT integrations after settings are hydrated
     const initializeMqtt = async () => {
       try {
+        // Wait for settings to be hydrated from localStorage
+        let retries = 0
+        const maxRetries = 10
+        const retryDelay = 100
+
+        while (retries < maxRetries) {
+          const settings = settingsStore.getState()
+          // Check if settings have been hydrated by looking for non-default MQTT values
+          if (
+            settings.mqttEnabled !== false ||
+            settings.mqttHost !== 'localhost'
+          ) {
+            break
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, retryDelay))
+          retries++
+        }
+
+        // Initialize legacy MQTT integration
         await initializeMqttIntegration()
-        console.log('MQTT integration initialized successfully')
+        console.log('Legacy MQTT integration initialized successfully')
+
+        // Initialize new MQTT broker integration
+        await mqttBrokerIntegration.initialize()
+        console.log('MQTT Broker Integration initialized successfully')
       } catch (error) {
-        console.warn('Failed to initialize MQTT integration:', error)
+        console.warn('Failed to initialize MQTT integrations:', error)
       }
     }
 
-    initializeMqtt()
+    // Delay MQTT initialization to ensure settings are hydrated
+    setTimeout(initializeMqtt, 100)
 
     // Cleanup on unmount
     return () => {
       cleanupMqttIntegration().catch((error) => {
-        console.warn('Failed to cleanup MQTT integration:', error)
+        console.warn('Failed to cleanup legacy MQTT integration:', error)
+      })
+
+      mqttBrokerIntegration.shutdown().catch((error) => {
+        console.warn('Failed to cleanup MQTT Broker Integration:', error)
       })
     }
   }, [])

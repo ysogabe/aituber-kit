@@ -66,3 +66,6 @@ public/scripts/*
 # Background files
 /public/backgrounds/*
 !/public/backgrounds/bg-c.png
+
+# Implementation plans (git管理外)
+_implements/

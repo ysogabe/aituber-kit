@@ -31,6 +31,23 @@ npm install        # Install dependencies (requires Node.js 20.0.0+, npm 10.0.0+
 cp .env.example .env  # Configure environment variables
 ```
 
+## MVP Version Limitations
+
+### MQTT Function Restrictions
+
+During the MVP phase, the MQTT integration has the following limitations:
+
+- **Fixed Topic**: Currently uses a hardcoded topic `aituber/speech` with QoS 2
+- **No Topic Configuration**: Topic and payload settings cannot be changed through the UI
+- **Limited Payload Options**: Advanced payload configuration is not available
+- **Next Phase Features**: Topic/payload configuration functionality will be implemented in the next development phase
+
+### Implementation Details
+
+- **Auto-subscription**: When MQTT is enabled and connected, the system automatically subscribes to `aituber/speech` topic
+- **Message Handling**: Received messages are logged to console for MVP validation
+- **Settings UI**: Shows notification about MVP limitations in the MQTT broker settings panel
+
 ## Architecture
 
 ### Tech Stack
@@ -72,6 +89,22 @@ cp .env.example .env  # Configure environment variables
 - Follow the established directory structure
 - API clients should be centralized in `app/lib/api/client.ts`
 
+### TDD Development Rules
+
+- **テスト失敗の分析**: テストが失敗した場合、なぜ失敗したかを十分に検討し、実装計画に記載する
+- **適切な実装変更**: テストを通すためのハードコーディングや汎用的ではない修正は行わない
+- **設計書との整合性**: 設計書の内容と異なる実装の変更は行わない
+- **実装変更時の通知**: 修正が必要な場合は、mosquitto_pubで以下のコマンドを実行して通知する：
+  ```bash
+  mosquitto_pub -h 192.168.0.131 -t "aituber/speech" -m '{
+    "id": "implementation-change-notification",
+    "text": "実装計画に変更が必要です",
+    "type": "alert", 
+    "priority": "high",
+    "timestamp": "2025-06-19T00:00:00.000Z"
+  }'
+  ```
+
 ### Testing
 
 - Place tests in `__tests__` directories
@@ -81,6 +114,35 @@ cp .env.example .env  # Configure environment variables
 ### Environment Variables
 
 Required API keys vary by features used (OpenAI, Google, Azure, etc.). Check `.env.example` for all available options.
+
+## MQTT通知方法
+
+### 構造化ペイロード形式（必須）
+MQTTでAITuberに通知する場合は、以下の構造化JSON形式を使用してください：
+
+```bash
+mosquitto_pub -h 192.168.0.131 -t "aituber/speech" -m '{
+  "id": "unique-message-id",
+  "text": "通知内容のテキスト",
+  "type": "speech",
+  "priority": "medium",
+  "timestamp": "2025-06-19T12:00:00.000Z"
+}'
+```
+
+### パラメータ仕様
+- **host**: 192.168.0.131
+- **topic**: aituber/speech (固定、QoS: 2)
+- **id**: 一意のメッセージID（必須）
+- **text**: 発話するテキスト内容（必須）
+- **type**: speech | alert | notification（必須）
+- **priority**: high | medium | low（必須）
+- **timestamp**: ISO 8601形式のタイムスタンプ（必須）
+
+### 注意事項
+- **構造化ペイロードが必須**: シンプルテキスト形式では発話されません
+- **全パラメータ必須**: id, text, type, priority, timestampすべてが必要
+- **JSON形式**: 正しいJSON構文である必要があります
 
 ## License Considerations
 
@@ -92,6 +154,7 @@ Required API keys vary by features used (OpenAI, Google, Azure, etc.). Check `.e
 ## CRITICAL: GitHub Issue/PR Guidelines
 
 **絶対にフォーク元（tegnike/aituber-kit）にIssueやPRを作成しないこと**
+
 - Issue/PR は必ず自分のフォークリポジトリ（ysogabe/aituber-kit）に作成する
 - Issue/PR 作成前に必ず以下を確認：
   1. `gh repo view` でリポジトリ名を確認

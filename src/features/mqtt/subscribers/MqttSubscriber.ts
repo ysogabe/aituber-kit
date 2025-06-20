@@ -109,7 +109,12 @@ export class MqttSubscriber {
         connectUrl += this.config.websocketPath
       }
 
-      console.log(`Connecting to MQTT broker: ${connectUrl}`)
+      console.log(`Connecting to MQTT broker: ${connectUrl}`, {
+        clientId: this.config.clientId,
+        authenticated: !!this.config.username,
+        secure: this.config.secure,
+        protocol: this.config.protocol,
+      })
 
       this.client = mqtt.connect(connectUrl, clientOptions)
 
@@ -205,7 +210,23 @@ export class MqttSubscriber {
     if (!this.client) return
 
     this.client.on('connect', () => {
-      console.log('Connected to MQTT broker')
+      const protocol =
+        this.config.protocol === 'websocket'
+          ? this.config.secure
+            ? 'wss'
+            : 'ws'
+          : this.config.secure
+            ? 'mqtts'
+            : 'mqtt'
+
+      console.log('✅ MQTT Subscriber: Connected to MQTT broker', {
+        host: this.config.host,
+        port: this.config.port,
+        protocol: protocol,
+        clientId: this.config.clientId,
+        secure: this.config.secure,
+        subscriptions: this.subscriptions.filter((sub) => sub.active).length,
+      })
       this.setConnectionStatus('connected')
     })
 
@@ -241,36 +262,55 @@ export class MqttSubscriber {
   private async subscribeToTopics(): Promise<void> {
     if (!this.client) return
 
-    for (const subscription of this.subscriptions) {
-      if (subscription.active) {
-        try {
-          await new Promise<void>((resolve, reject) => {
-            this.client!.subscribe(
-              subscription.topic,
-              { qos: subscription.qos },
-              (error) => {
-                if (error) {
-                  reject(error)
-                } else {
-                  console.log(`Subscribed to topic: ${subscription.topic}`)
-                  resolve()
-                }
+    console.log('🔗 MQTT: Starting topic subscriptions...')
+    console.log(
+      `MQTT: Total subscriptions configured: ${this.subscriptions.length}`
+    )
+
+    const activeSubscriptions = this.subscriptions.filter((sub) => sub.active)
+    console.log(`MQTT: Active subscriptions: ${activeSubscriptions.length}`)
+
+    if (activeSubscriptions.length === 0) {
+      console.warn('⚠️ MQTT: No active subscriptions found')
+      return
+    }
+
+    for (const subscription of activeSubscriptions) {
+      try {
+        console.log(
+          `📡 MQTT: Subscribing to topic '${subscription.topic}' with QoS ${subscription.qos}...`
+        )
+
+        await new Promise<void>((resolve, reject) => {
+          this.client!.subscribe(
+            subscription.topic,
+            { qos: subscription.qos },
+            (error) => {
+              if (error) {
+                console.error(
+                  `❌ MQTT: Failed to subscribe to topic '${subscription.topic}':`,
+                  error.message
+                )
+                reject(error)
+              } else {
+                console.log(
+                  `✅ MQTT: Successfully subscribed to topic '${subscription.topic}' (QoS: ${subscription.qos})`
+                )
+                resolve()
               }
-            )
-          })
-        } catch (error) {
-          console.error(
-            `Failed to subscribe to topic ${subscription.topic}:`,
-            error
+            }
           )
-          this.emit(
-            'error',
-            error as Error,
-            `subscription:${subscription.topic}`
-          )
-        }
+        })
+      } catch (error) {
+        console.error(
+          `❌ MQTT: Subscription error for topic '${subscription.topic}':`,
+          error
+        )
+        this.emit('error', error as Error, `subscription:${subscription.topic}`)
       }
     }
+
+    console.log('🎯 MQTT: Topic subscription process completed')
   }
 
   /**
@@ -280,18 +320,29 @@ export class MqttSubscriber {
     if (!this.client) return
 
     try {
+      console.log(`🔌 MQTT: Unsubscribing from topic '${topic}'...`)
+
       await new Promise<void>((resolve, reject) => {
         this.client!.unsubscribe(topic, (error) => {
           if (error) {
+            console.error(
+              `❌ MQTT: Failed to unsubscribe from topic '${topic}':`,
+              error.message
+            )
             reject(error)
           } else {
-            console.log(`Unsubscribed from topic: ${topic}`)
+            console.log(
+              `✅ MQTT: Successfully unsubscribed from topic '${topic}'`
+            )
             resolve()
           }
         })
       })
     } catch (error) {
-      console.error(`Failed to unsubscribe from topic ${topic}:`, error)
+      console.error(
+        `❌ MQTT: Unsubscription error for topic '${topic}':`,
+        error
+      )
       this.emit('error', error as Error, `unsubscription:${topic}`)
     }
   }
@@ -389,10 +440,29 @@ export class MqttSubscriber {
    * 購読設定を更新
    */
   updateSubscriptions(subscriptions: MqttSubscription[]): void {
+    const oldActiveCount = this.subscriptions.filter((sub) => sub.active).length
     this.subscriptions = subscriptions
+    const newActiveCount = this.subscriptions.filter((sub) => sub.active).length
+
+    console.log('🔄 MQTT: Updating subscription settings', {
+      previousActiveSubscriptions: oldActiveCount,
+      newActiveSubscriptions: newActiveCount,
+      connected: this.connectionStatus === 'connected',
+    })
+
+    // 新しいサブスクリプションの詳細をログ出力
+    if (newActiveCount > 0) {
+      console.log(
+        'MQTT: Active subscription topics:',
+        this.subscriptions
+          .filter((sub) => sub.active)
+          .map((sub) => `${sub.topic} (QoS: ${sub.qos})`)
+      )
+    }
 
     // 接続中の場合は購読を更新
     if (this.connectionStatus === 'connected') {
+      console.log('MQTT: Resubscribing to updated topics...')
       this.subscribeToTopics()
     }
   }
