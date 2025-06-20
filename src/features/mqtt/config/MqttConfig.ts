@@ -1,15 +1,18 @@
 import { MqttIntegrationConfig, MqttConfig, MqttSubscription } from '../types'
+import settingsStore from '@/features/stores/settings'
 
 /**
- * 環境変数からMQTT設定を読み込むユーティリティ
+ * settingsStoreからMQTT設定を読み込むユーティリティ
  */
 export class MqttConfigLoader {
   /**
-   * 環境変数からMQTT統合設定を読み込み
+   * settingsStoreからMQTT統合設定を読み込み
    */
   static loadConfig(): MqttIntegrationConfig {
+    const settings = settingsStore.getState()
+
     // MQTT統合機能の有効/無効
-    const enabled = process.env.NEXT_PUBLIC_MQTT_ENABLED === 'true'
+    const enabled = settings.mqttEnabled
 
     if (!enabled) {
       return {
@@ -41,27 +44,20 @@ export class MqttConfigLoader {
    * MQTT接続設定を読み込み
    */
   private static loadConnectionConfig(): MqttConfig {
-    const host = process.env.NEXT_PUBLIC_MQTT_HOST || 'localhost'
-    const port = parseInt(process.env.NEXT_PUBLIC_MQTT_PORT || '1883', 10)
-    const clientId =
-      process.env.NEXT_PUBLIC_MQTT_CLIENT_ID ||
-      `aituber-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const protocol =
-      (process.env.NEXT_PUBLIC_MQTT_PROTOCOL as 'mqtt' | 'websocket') || 'mqtt'
-    const websocketPath = process.env.NEXT_PUBLIC_MQTT_WEBSOCKET_PATH || '/mqtt'
-    const username = process.env.NEXT_PUBLIC_MQTT_USERNAME
-    const password = process.env.NEXT_PUBLIC_MQTT_PASSWORD
-    const secure = process.env.NEXT_PUBLIC_MQTT_SECURE === 'true'
+    const settings = settingsStore.getState()
 
     return {
-      host,
-      port,
-      clientId,
-      protocol,
-      websocketPath: protocol === 'websocket' ? websocketPath : undefined,
-      username,
-      password,
-      secure,
+      host: settings.mqttHost,
+      port: settings.mqttPort,
+      clientId: settings.mqttClientId,
+      protocol: settings.mqttProtocol,
+      websocketPath:
+        settings.mqttProtocol === 'websocket'
+          ? settings.mqttWebsocketPath
+          : undefined,
+      username: settings.mqttUsername,
+      password: settings.mqttPassword,
+      secure: settings.mqttSecure,
     }
   }
 
@@ -87,7 +83,7 @@ export class MqttConfigLoader {
 
     return allTopics.map((topic) => ({
       topic,
-      qos: 1 as const, // QoS 1 (At least once delivery)
+      qos: 2 as const, // QoS 2 (Exactly once delivery)
       active: true,
     }))
   }
@@ -96,20 +92,13 @@ export class MqttConfigLoader {
    * 再接続設定を読み込み
    */
   private static loadReconnectConfig() {
+    const settings = settingsStore.getState()
+
     return {
-      enabled: process.env.NEXT_PUBLIC_MQTT_RECONNECT_ENABLED !== 'false', // デフォルトで有効
-      initialDelay: parseInt(
-        process.env.NEXT_PUBLIC_MQTT_RECONNECT_INITIAL_DELAY || '1000',
-        10
-      ),
-      maxDelay: parseInt(
-        process.env.NEXT_PUBLIC_MQTT_RECONNECT_MAX_DELAY || '30000',
-        10
-      ),
-      maxAttempts: parseInt(
-        process.env.NEXT_PUBLIC_MQTT_RECONNECT_MAX_ATTEMPTS || '5',
-        10
-      ),
+      enabled: settings.mqttReconnectEnabled,
+      initialDelay: settings.mqttReconnectInitialDelay,
+      maxDelay: settings.mqttReconnectMaxDelay,
+      maxAttempts: settings.mqttReconnectMaxAttempts,
     }
   }
 

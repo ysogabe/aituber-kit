@@ -11,7 +11,7 @@ const localStorageMock = {
 
 // zustandのpersistミドルウェアで使用されるlocalStorageをモック
 Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock
+  value: localStorageMock,
 })
 
 // 環境変数のモック
@@ -48,7 +48,7 @@ describe('MQTT Broker Settings Store', () => {
       jest.resetModules()
       const { default: newSettingsStore } = require('../settings')
       const state = newSettingsStore.getState()
-      
+
       expect(state.mqttEnabled).toBe(false)
       expect(state.mqttHost).toBe('localhost')
       expect(state.mqttPort).toBe(1883)
@@ -86,11 +86,11 @@ describe('MQTT Broker Settings Store', () => {
     it('再接続設定の初期値が正しい', () => {
       // MQTT_RECONNECT_ENABLEDのデフォルトは'false'でない限りtrue
       process.env.NEXT_PUBLIC_MQTT_RECONNECT_ENABLED = undefined
-      
+
       jest.resetModules()
       const { default: newSettingsStore } = require('../settings')
       const state = newSettingsStore.getState()
-      
+
       expect(state.mqttReconnectEnabled).toBe(true)
       expect(state.mqttReconnectInitialDelay).toBe(1000)
       expect(state.mqttReconnectMaxDelay).toBe(30000)
@@ -106,45 +106,45 @@ describe('MQTT Broker Settings Store', () => {
       expect(initialState.mqttEnabled).toBe(false)
 
       newSettingsStore.setState({ mqttEnabled: true })
-      
+
       const updatedState = newSettingsStore.getState()
       expect(updatedState.mqttEnabled).toBe(true)
     })
 
     it('MQTTホスト設定を更新できる', () => {
       settingsStore.setState({ mqttHost: '192.168.1.100' })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttHost).toBe('192.168.1.100')
     })
 
     it('MQTTポート設定を更新できる', () => {
       settingsStore.setState({ mqttPort: 8083 })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttPort).toBe(8083)
     })
 
     it('MQTTプロトコル設定を更新できる', () => {
       settingsStore.setState({ mqttProtocol: 'websocket' })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttProtocol).toBe('websocket')
     })
 
     it('WebSocketパス設定を更新できる', () => {
       settingsStore.setState({ mqttWebsocketPath: '/websocket' })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttWebsocketPath).toBe('/websocket')
     })
 
     it('MQTT認証設定を更新できる', () => {
-      settingsStore.setState({ 
+      settingsStore.setState({
         mqttUsername: 'newuser',
-        mqttPassword: 'newpass'
+        mqttPassword: 'newpass',
       })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttUsername).toBe('newuser')
       expect(state.mqttPassword).toBe('newpass')
@@ -152,7 +152,7 @@ describe('MQTT Broker Settings Store', () => {
 
     it('MQTTセキュア接続設定を更新できる', () => {
       settingsStore.setState({ mqttSecure: true })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttSecure).toBe(true)
     })
@@ -162,9 +162,9 @@ describe('MQTT Broker Settings Store', () => {
         mqttReconnectEnabled: false,
         mqttReconnectInitialDelay: 2000,
         mqttReconnectMaxDelay: 60000,
-        mqttReconnectMaxAttempts: 10
+        mqttReconnectMaxAttempts: 10,
       })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttReconnectEnabled).toBe(false)
       expect(state.mqttReconnectInitialDelay).toBe(2000)
@@ -232,9 +232,14 @@ describe('MQTT Broker Settings Store', () => {
     it('無効な接続状態は設定されない（TypeScript型チェック）', () => {
       // この部分は実際にはTypeScriptのコンパイル時に検出されるが、
       // テストでは正しい型のみが受け入れられることを確認
-      const validStatuses = ['disconnected', 'connecting', 'connected', 'error'] as const
-      
-      validStatuses.forEach(status => {
+      const validStatuses = [
+        'disconnected',
+        'connecting',
+        'connected',
+        'error',
+      ] as const
+
+      validStatuses.forEach((status) => {
         settingsStore.setState({ mqttConnectionStatus: status })
         expect(settingsStore.getState().mqttConnectionStatus).toBe(status)
       })
@@ -244,10 +249,10 @@ describe('MQTT Broker Settings Store', () => {
   describe('localStorage永続化のテスト', () => {
     it('MQTT設定がlocalStorageに永続化される（モック確認）', () => {
       // zustandのpersistミドルウェアがsetItemを呼ぶかテスト
-      settingsStore.setState({ 
+      settingsStore.setState({
         mqttEnabled: true,
         mqttHost: '192.168.0.131',
-        mqttPort: 8083
+        mqttPort: 8083,
       })
 
       // persistミドルウェアはデバウンスされているため、少し待つ
@@ -260,12 +265,12 @@ describe('MQTT Broker Settings Store', () => {
       // settings.ts のpartialize設定を確認するために、
       // 実際の永続化対象を検証
       const state = settingsStore.getState()
-      
+
       // MQTT関連の設定が含まれているかチェック
       // 注意: この部分は実際のpartialize実装に依存する
       const persistedFields = [
         'mqttEnabled',
-        'mqttHost', 
+        'mqttHost',
         'mqttPort',
         'mqttProtocol',
         'mqttWebsocketPath',
@@ -275,10 +280,10 @@ describe('MQTT Broker Settings Store', () => {
         'mqttReconnectEnabled',
         'mqttReconnectInitialDelay',
         'mqttReconnectMaxDelay',
-        'mqttReconnectMaxAttempts'
+        'mqttReconnectMaxAttempts',
       ]
-      
-      persistedFields.forEach(field => {
+
+      persistedFields.forEach((field) => {
         expect(state).toHaveProperty(field)
       })
     })
@@ -289,7 +294,7 @@ describe('MQTT Broker Settings Store', () => {
       jest.resetModules()
       const { default: newSettingsStore } = require('../settings')
       const state = newSettingsStore.getState()
-      
+
       // 接続状態は初期値にリセットされる
       expect(state.mqttConnectionStatus).toBe('disconnected')
     })
@@ -309,11 +314,11 @@ describe('MQTT Broker Settings Store', () => {
         mqttReconnectEnabled: false,
         mqttReconnectInitialDelay: 5000,
         mqttReconnectMaxDelay: 120000,
-        mqttReconnectMaxAttempts: 3
+        mqttReconnectMaxAttempts: 3,
       }
 
       settingsStore.setState(updateData)
-      
+
       const state = settingsStore.getState()
       Object.entries(updateData).forEach(([key, value]) => {
         expect((state as any)[key]).toBe(value)
@@ -325,12 +330,12 @@ describe('MQTT Broker Settings Store', () => {
       settingsStore.setState({
         mqttEnabled: true,
         mqttHost: 'initial-host',
-        mqttPort: 1883
+        mqttPort: 1883,
       })
 
       // 部分更新
       settingsStore.setState({ mqttHost: 'updated-host' })
-      
+
       const state = settingsStore.getState()
       expect(state.mqttEnabled).toBe(true) // 変更されない
       expect(state.mqttHost).toBe('updated-host') // 更新される
@@ -354,7 +359,9 @@ describe('MQTT Broker Settings Store', () => {
 
       settingsStore.setState({ mqttReconnectInitialDelay: 2000 })
       expect(settingsStore.getState().mqttReconnectInitialDelay).toBe(2000)
-      expect(typeof settingsStore.getState().mqttReconnectInitialDelay).toBe('number')
+      expect(typeof settingsStore.getState().mqttReconnectInitialDelay).toBe(
+        'number'
+      )
     })
 
     it('ブール値フィールドはブール値のみ受け入れる', () => {

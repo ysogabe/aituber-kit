@@ -1,5 +1,6 @@
 import { MqttBrokerIntegration } from '../MqttBrokerIntegration'
 import { useMqttBrokerStore } from '@/features/stores/mqttBrokerSettings'
+import { diagnoseMqttConfig } from '../utils/errorHandler'
 
 // Zustandストアのモック
 jest.mock('@/features/stores/mqttBrokerSettings', () => ({
@@ -8,22 +9,53 @@ jest.mock('@/features/stores/mqttBrokerSettings', () => ({
   },
 }))
 
-const mockUseMqttBrokerStore = useMqttBrokerStore as jest.MockedObject<typeof useMqttBrokerStore>
+// settingsStoreのモック
+jest.mock('@/features/stores/settings', () => ({
+  __esModule: true,
+  default: {
+    getState: jest.fn(),
+    setState: jest.fn(),
+  },
+}))
+
+// mqttClientIdGeneratorのモック
+jest.mock('../utils/mqttClientIdGenerator', () => ({
+  generateAituberClientId: jest.fn(() => 'aituber-test-12345'),
+  isAituberClientId: jest.fn((id: string) => id.startsWith('aituber-')),
+  convertLegacyClientId: jest.fn((id: string) => `aituber-${id}`),
+}))
+
+// errorHandlerのモック
+jest.mock('../utils/errorHandler', () => ({
+  analyzeMqttError: jest.fn((error: Error) => ({
+    type: 'connection',
+    message: error.message,
+  })),
+  formatMqttError: jest.fn((errorInfo: any) => errorInfo.message),
+  diagnoseMqttConfig: jest.fn(() => ({
+    valid: true,
+    issues: [],
+    warnings: [],
+  })),
+}))
+
+const mockUseMqttBrokerStore = useMqttBrokerStore as jest.MockedObject<
+  typeof useMqttBrokerStore
+>
+
+const mockDiagnoseMqttConfig = diagnoseMqttConfig as jest.MockedFunction<
+  typeof diagnoseMqttConfig
+>
 
 describe('MqttBrokerIntegration', () => {
   let integration: MqttBrokerIntegration
 
   beforeEach(() => {
     integration = MqttBrokerIntegration.getInstance()
-    
+
     // デフォルト設定をモック
     mockUseMqttBrokerStore.getState.mockReturnValue({
-      enabled: true,
-      clientId: 'test-client-id',
-      brokerUrl: 'mqtt://192.168.0.131:1883',
-      brokerPort: 1883,
       sendMode: 'direct_send',
-      connectionStatus: 'disconnected',
       defaultMessageType: 'speech',
       defaultPriority: 'medium',
       defaultEmotion: null,
@@ -32,6 +64,23 @@ describe('MqttBrokerIntegration', () => {
       updateMqttBrokerConfig: jest.fn(),
       generateNewClientId: jest.fn(),
       updateConnectionStatus: jest.fn(),
+      getBasicSettings: () => ({
+        enabled: true,
+        clientId: 'test-client-id',
+        host: '192.168.0.131',
+        port: 1883,
+        protocol: 'websocket' as const,
+        websocketPath: '/mqtt',
+        username: undefined,
+        password: undefined,
+        secure: false,
+        reconnectEnabled: true,
+        reconnectInitialDelay: 1000,
+        reconnectMaxDelay: 30000,
+        reconnectMaxAttempts: 5,
+      }),
+      getBrokerUrl: () => 'ws://192.168.0.131:1883',
+      getConnectionStatus: () => 'disconnected' as const,
     })
   })
 
@@ -43,7 +92,7 @@ describe('MqttBrokerIntegration', () => {
     it('同じインスタンスを返す', () => {
       const instance1 = MqttBrokerIntegration.getInstance()
       const instance2 = MqttBrokerIntegration.getInstance()
-      
+
       expect(instance1).toBe(instance2)
     })
   })
@@ -51,42 +100,73 @@ describe('MqttBrokerIntegration', () => {
   describe('設定の妥当性チェック', () => {
     it('有効な設定を受け入れる', () => {
       const config = {
-        brokerUrl: 'mqtt://192.168.0.131:1883',
+        brokerUrl: 'ws://192.168.0.131:1883',
         brokerPort: 1883,
         clientId: 'test-client',
       }
 
-      expect(integration.validateConfig(config)).toBe(true)
+      const result = integration.validateConfig(config)
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
     })
 
     it('無効なURL形式を拒否する', () => {
+      // 無効な診断結果を設定
+      mockDiagnoseMqttConfig.mockReturnValue({
+        valid: false,
+        issues: ['URLが無効です'],
+        warnings: [],
+      })
+
       const config = {
         brokerUrl: 'invalid-url',
         brokerPort: 1883,
         clientId: 'test-client',
       }
 
-      expect(integration.validateConfig(config)).toBe(false)
+      const result = integration.validateConfig(config)
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
     })
 
     it('無効なポート番号を拒否する', () => {
+      // 無効な診断結果を設定
+      mockDiagnoseMqttConfig.mockReturnValue({
+        valid: false,
+        issues: ['ポート番号が無効です（1-65535の範囲で設定してください）'],
+        warnings: [],
+      })
+
       const config = {
-        brokerUrl: 'mqtt://192.168.0.131:1883',
+        brokerUrl: 'ws://localhost:70000',
         brokerPort: 70000,
         clientId: 'test-client',
       }
 
-      expect(integration.validateConfig(config)).toBe(false)
+      const result = integration.validateConfig(config)
+      expect(result.valid).toBe(false)
+      expect(result.errors).toContain(
+        'ポート番号が無効です（1-65535の範囲で設定してください）'
+      )
     })
 
     it('空のクライアントIDを拒否する', () => {
+      // 無効な診断結果を設定
+      mockDiagnoseMqttConfig.mockReturnValue({
+        valid: false,
+        issues: ['クライアントIDが設定されていません'],
+        warnings: [],
+      })
+
       const config = {
-        brokerUrl: 'mqtt://192.168.0.131:1883',
+        brokerUrl: 'ws://localhost:1883',
         brokerPort: 1883,
         clientId: '',
       }
 
-      expect(integration.validateConfig(config)).toBe(false)
+      const result = integration.validateConfig(config)
+      expect(result.valid).toBe(false)
+      expect(result.errors).toContain('クライアントIDが設定されていません')
     })
   })
 
@@ -95,10 +175,41 @@ describe('MqttBrokerIntegration', () => {
       const config = integration.buildConnectionConfig()
 
       expect(config).toEqual({
-        brokerUrl: 'mqtt://192.168.0.131:1883',
+        brokerUrl: 'ws://192.168.0.131:1883',
         brokerPort: 1883,
-        clientId: 'test-client-id',
+        clientId: 'aituber-test-client-id', // convertLegacyClientIdが呼ばれる
+        username: undefined,
+        password: undefined,
+        secure: false,
       })
+    })
+
+    it('既存の有効なAITuber ClientIDを使用する', () => {
+      const mockState = mockUseMqttBrokerStore.getState()
+      mockUseMqttBrokerStore.getState.mockReturnValue({
+        ...mockState,
+        getBasicSettings: () => ({
+          ...mockState.getBasicSettings(),
+          clientId: 'aituber-existing-12345',
+        }),
+      })
+
+      const config = integration.buildConnectionConfig()
+      expect(config.clientId).toBe('aituber-existing-12345')
+    })
+
+    it('無効なClientIDの場合は新規生成する', () => {
+      const mockState = mockUseMqttBrokerStore.getState()
+      mockUseMqttBrokerStore.getState.mockReturnValue({
+        ...mockState,
+        getBasicSettings: () => ({
+          ...mockState.getBasicSettings(),
+          clientId: 'old-client-id',
+        }),
+      })
+
+      const config = integration.buildConnectionConfig()
+      expect(config.clientId).toBe('aituber-old-client-id')
     })
   })
 
@@ -110,8 +221,9 @@ describe('MqttBrokerIntegration', () => {
     })
 
     it('構造化ペイロードを生成（タイムスタンプ有効）', () => {
+      const mockState = mockUseMqttBrokerStore.getState()
       mockUseMqttBrokerStore.getState.mockReturnValue({
-        ...mockUseMqttBrokerStore.getState(),
+        ...mockState,
         includeTimestamp: true,
       })
 
@@ -125,8 +237,9 @@ describe('MqttBrokerIntegration', () => {
     })
 
     it('構造化ペイロードを生成（メタデータ有効）', () => {
+      const mockState = mockUseMqttBrokerStore.getState()
       mockUseMqttBrokerStore.getState.mockReturnValue({
-        ...mockUseMqttBrokerStore.getState(),
+        ...mockState,
         includeMetadata: true,
       })
 
@@ -139,8 +252,9 @@ describe('MqttBrokerIntegration', () => {
     })
 
     it('感情設定を含むペイロードを生成', () => {
+      const mockState = mockUseMqttBrokerStore.getState()
       mockUseMqttBrokerStore.getState.mockReturnValue({
-        ...mockUseMqttBrokerStore.getState(),
+        ...mockState,
         defaultEmotion: 'happy',
       })
 
@@ -235,8 +349,9 @@ describe('MqttBrokerIntegration', () => {
     })
 
     it('任意の設定変更で構造化ペイロードに切り替わる', () => {
+      const mockState = mockUseMqttBrokerStore.getState()
       mockUseMqttBrokerStore.getState.mockReturnValue({
-        ...mockUseMqttBrokerStore.getState(),
+        ...mockState,
         defaultMessageType: 'alert', // デフォルトから変更
       })
 

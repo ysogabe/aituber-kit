@@ -14,14 +14,14 @@ export default async function handler(
   const apiUrl =
     serverUrl || process.env.VOICEVOX_SERVER_URL || 'http://localhost:50021'
 
-  console.log('VOICEVOX API Request:', { 
-    text: text?.substring(0, 100) + (text?.length > 100 ? '...' : ''), 
-    speaker, 
-    speed, 
-    pitch, 
-    intonation, 
+  console.log('VOICEVOX API Request:', {
+    text: text?.substring(0, 100) + (text?.length > 100 ? '...' : ''),
+    speaker,
+    speed,
+    pitch,
+    intonation,
     serverUrl: apiUrl,
-    textLength: text?.length 
+    textLength: text?.length,
   })
 
   try {
@@ -30,16 +30,20 @@ export default async function handler(
       console.error('VOICEVOX: Missing or invalid text parameter')
       return res.status(400).json({ error: 'テキストが指定されていません' })
     }
-    
+
     if (!speaker || isNaN(Number(speaker))) {
       console.error('VOICEVOX: Missing or invalid speaker parameter:', speaker)
-      return res.status(400).json({ error: '有効なスピーカーIDが指定されていません' })
+      return res
+        .status(400)
+        .json({ error: '有効なスピーカーIDが指定されていません' })
     }
 
     // テキストの長さ制限（VOICEVOXの推奨値）
     let processText = text
     if (text.length > 200) {
-      console.warn(`VOICEVOX: Text too long (${text.length} chars), truncating to 200`)
+      console.warn(
+        `VOICEVOX: Text too long (${text.length} chars), truncating to 200`
+      )
       processText = text.substring(0, 200)
     }
 
@@ -56,8 +60,11 @@ export default async function handler(
         timeout: 30000,
       }
     )
-    
-    console.log('VOICEVOX: Audio query successful, response status:', queryResponse.status)
+
+    console.log(
+      'VOICEVOX: Audio query successful, response status:',
+      queryResponse.status
+    )
 
     const queryData = queryResponse.data
     queryData.speedScale = speed
@@ -79,12 +86,15 @@ export default async function handler(
       }
     )
 
-    console.log('VOICEVOX: Synthesis successful, response status:', synthesisResponse.status)
+    console.log(
+      'VOICEVOX: Synthesis successful, response status:',
+      synthesisResponse.status
+    )
     res.setHeader('Content-Type', 'audio/wav')
     synthesisResponse.data.pipe(res)
   } catch (error) {
     console.error('Error in VOICEVOX TTS:', error)
-    
+
     // 詳細なエラー情報を提供
     if (axios.isAxiosError(error)) {
       const axiosError = error as any
@@ -92,20 +102,23 @@ export default async function handler(
         status: axiosError.response?.status,
         data: axiosError.response?.data,
         message: axiosError.message,
-        url: axiosError.config?.url
+        url: axiosError.config?.url,
       })
-      
+
       if (axiosError.response?.status === 422) {
-        return res.status(422).json({ 
-          error: 'VOICEVOXでテキスト処理エラーが発生しました。テキストに問題がある可能性があります。' 
+        return res.status(422).json({
+          error:
+            'VOICEVOXでテキスト処理エラーが発生しました。テキストに問題がある可能性があります。',
         })
       }
-      
-      return res.status(500).json({ 
-        error: `VOICEVOX APIエラー: ${axiosError.response?.status || 'Unknown'} - ${axiosError.message}` 
+
+      return res.status(500).json({
+        error: `VOICEVOX APIエラー: ${axiosError.response?.status || 'Unknown'} - ${axiosError.message}`,
       })
     }
-    
-    res.status(500).json({ error: `VOICEVOX TTS処理エラー: ${error instanceof Error ? error.message : 'Unknown error'}` })
+
+    res.status(500).json({
+      error: `VOICEVOX TTS処理エラー: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    })
   }
 }

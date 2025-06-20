@@ -2,7 +2,8 @@ import { useTranslation } from 'react-i18next'
 import settingsStore from '@/features/stores/settings'
 import menuStore from '@/features/stores/menu'
 import { TextButton } from '../textButton'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
+import { mqttBrokerIntegration } from '@/features/mqtt/MqttBrokerIntegration'
 
 const ExternalLinkage = () => {
   const { t } = useTranslation()
@@ -21,6 +22,31 @@ const ExternalLinkage = () => {
       })
     }
   }, [])
+
+  // MQTT統合の初期化と接続制御
+  useEffect(() => {
+    const handleMqttConnection = async () => {
+      console.log(
+        `External Linkage: MQTT function toggled - ${mqttEnabled ? 'ON' : 'OFF'}`
+      )
+
+      if (mqttEnabled) {
+        console.log('External Linkage: Attempting to connect to MQTT broker...')
+        const connected = await mqttBrokerIntegration.toggleConnection(true)
+        if (connected) {
+          console.log('External Linkage: Successfully connected to MQTT broker')
+        } else {
+          console.error('External Linkage: Failed to connect to MQTT broker')
+        }
+      } else {
+        console.log('External Linkage: Disconnecting from MQTT broker...')
+        await mqttBrokerIntegration.toggleConnection(false)
+        console.log('External Linkage: Disconnected from MQTT broker')
+      }
+    }
+
+    handleMqttConnection()
+  }, [mqttEnabled])
 
   return (
     <div className="mb-10">
@@ -58,22 +84,30 @@ const ExternalLinkage = () => {
           {t('MqttIntegrationDescription')}
         </p>
         <div className="my-2">
-          <p className="text-sm">
-            {mqttEnabled ? (
-              <span className="text-green-600">{t('MqttEnabledStatus')}</span>
-            ) : (
-              <span className="text-gray-600">{t('MqttDisabledStatus')}</span>
-            )}
-          </p>
+          <TextButton
+            onClick={() => {
+              settingsStore.setState({ mqttEnabled: !mqttEnabled })
+            }}
+          >
+            {mqttEnabled ? t('StatusOn') : t('StatusOff')}
+          </TextButton>
         </div>
-        <TextButton
-          onClick={() => {
-            console.log('MQTT設定ボタンがクリックされました')
-            menuStore.setState({ activeSettingsTab: 'mqttBroker' })
-          }}
-        >
-          {t('GoToMqttSettings')}
-        </TextButton>
+        {mqttEnabled && (
+          <div className="mt-2 p-3 bg-gray-100 rounded">
+            <p className="text-sm">トピック: aituber/speech (QoS: 2)</p>
+          </div>
+        )}
+        <div className="mt-2">
+          <button
+            onClick={() => {
+              console.log('MQTT設定ボタンがクリックされました')
+              menuStore.setState({ activeSettingsTab: 'mqttBroker' })
+            }}
+            className="text-sm text-blue-600 hover:text-blue-800 underline bg-transparent border-none cursor-pointer"
+          >
+            → {t('GoToMqttSettings')}
+          </button>
+        </div>
       </div>
 
       {/* 注意事項 */}

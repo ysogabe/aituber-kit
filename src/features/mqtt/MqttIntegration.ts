@@ -23,11 +23,27 @@ export class MqttIntegration {
   }
 
   /**
+   * ログ出力用に設定からパスワードを除外
+   */
+  private sanitizeConfigForLogging(config: MqttIntegrationConfig): any {
+    return {
+      ...config,
+      connection: {
+        ...config.connection,
+        password: config.connection.password ? '***' : undefined,
+      },
+    }
+  }
+
+  /**
    * MQTT統合を初期化
    */
   async initialize(config: MqttIntegrationConfig): Promise<void> {
     try {
-      console.log('Initializing MQTT integration with config:', config)
+      console.log(
+        'Initializing MQTT integration with config:',
+        this.sanitizeConfigForLogging(config)
+      )
 
       this.config = config
 
@@ -226,7 +242,10 @@ export class MqttIntegration {
    * 設定を更新
    */
   async updateConfig(newConfig: MqttIntegrationConfig): Promise<void> {
-    console.log('Updating MQTT integration config:', newConfig)
+    console.log(
+      'Updating MQTT integration config:',
+      this.sanitizeConfigForLogging(newConfig)
+    )
 
     // 既存の接続を停止
     if (this.isInitialized) {

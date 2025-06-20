@@ -369,7 +369,7 @@
   "MqttBrokerConfiguration": "ブローカー設定",
   "MqttBrokerUrl": "ブローカーURL",
   "MqttBrokerUrlDescription": "MQTTブローカーのURLを入力してください（例: mqtt://192.168.0.131:1883）",
-  "MqttBrokerPort": "ブローカーポート", 
+  "MqttBrokerPort": "ブローカーポート",
   "MqttBrokerPortDescription": "MQTTブローカーのポート番号（通常: 1883、セキュア接続: 8883）",
   "MqttSendMode": "送信モード",
   "MqttSendModeDirectSend": "直接送信",

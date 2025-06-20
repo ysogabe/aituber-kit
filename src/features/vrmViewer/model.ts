@@ -11,6 +11,7 @@ import { VRMLookAtSmootherLoaderPlugin } from '@/lib/VRMLookAtSmootherLoaderPlug
 import { LipSync } from '../lipSync/lipSync'
 import { EmoteController } from '../emoteController/emoteController'
 import { Talk } from '../messages/messages'
+import { audioContextManager } from '@/utils/audioContextManager'
 
 /**
  * 3Dキャラクターを管理するクラス
@@ -25,7 +26,8 @@ export class Model {
 
   constructor(lookAtTargetParent: THREE.Object3D) {
     this._lookAtTargetParent = lookAtTargetParent
-    this._lipSync = new LipSync(new AudioContext(), { forceStart: true })
+    // LipSyncの初期化を遅延させる
+    this._lipSync = undefined
   }
 
   public async loadVRM(url: string): Promise<void> {
@@ -56,6 +58,32 @@ export class Model {
   }
 
   /**
+   * LipSyncインスタンスを取得（遅延初期化）
+   */
+  private async getLipSync(): Promise<LipSync> {
+    if (!this._lipSync) {
+      // AudioContextManagerを使用してAudioContextを取得
+      const audioContext = audioContextManager.getContext()
+      if (audioContext) {
+        this._lipSync = new LipSync(audioContext, { forceStart: true })
+      } else {
+        // AudioContextが利用可能になるまで待機
+        return new Promise((resolve, reject) => {
+          audioContextManager.onReady((context) => {
+            try {
+              this._lipSync = new LipSync(context, { forceStart: true })
+              resolve(this._lipSync)
+            } catch (error) {
+              reject(error)
+            }
+          })
+        })
+      }
+    }
+    return this._lipSync
+  }
+
+  /**
    * VRMアニメーションを読み込む
    *
    * https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm_animation-1.0/README.ja.md
@@ -80,22 +108,29 @@ export class Model {
     isNeedDecode: boolean = true
   ) {
     this.emoteController?.playEmotion(talk.emotion)
-    await new Promise((resolve) => {
-      this._lipSync?.playFromArrayBuffer(
-        buffer,
-        () => {
-          resolve(true)
-        },
-        isNeedDecode
-      )
-    })
+    try {
+      const lipSync = await this.getLipSync()
+      await new Promise((resolve) => {
+        lipSync.playFromArrayBuffer(
+          buffer,
+          () => {
+            resolve(true)
+          },
+          isNeedDecode
+        )
+      })
+    } catch (error) {
+      console.error('Failed to initialize LipSync for speaking:', error)
+    }
   }
 
   /**
    * 現在の音声再生を停止
    */
   public stopSpeaking() {
-    this._lipSync?.stopCurrentPlayback()
+    if (this._lipSync) {
+      this._lipSync.stopCurrentPlayback()
+    }
   }
 
   /**
@@ -106,6 +141,7 @@ export class Model {
   }
 
   public update(delta: number): void {
+    // LipSyncが初期化されている場合のみ更新
     if (this._lipSync) {
       const { volume } = this._lipSync.update()
       this.emoteController?.lipSync('aa', volume)
